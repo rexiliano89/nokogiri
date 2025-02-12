@@ -185,19 +185,28 @@ module Nokogiri
               end.new
               custom_employees = set.send(method, query, callback_handler)
 
-              assert_equal(xml.xpath("//employee"), custom_employees,
-                "using #{method} with custom selector '#{query}'")
+              assert_equal(
+                xml.xpath("//employee"),
+                custom_employees,
+                "using #{method} with custom selector '#{query}'",
+              )
             end
           end
 
           it "with variable bindings" do
             set = xml.xpath("//staff")
 
-            assert_equal(4, set.xpath("//address[@domestic=$value]", nil, value: "Yes").length,
-              "using #xpath with variable binding")
+            assert_equal(
+              4,
+              set.xpath("//address[@domestic=$value]", nil, value: "Yes").length,
+              "using #xpath with variable binding",
+            )
 
-            assert_equal(4, set.search("//address[@domestic=$value]", nil, value: "Yes").length,
-              "using #search with variable binding")
+            assert_equal(
+              4,
+              set.search("//address[@domestic=$value]", nil, value: "Yes").length,
+              "using #search with variable binding",
+            )
           end
 
           it "context search returns itself" do
@@ -540,17 +549,45 @@ module Nokogiri
 
         describe "#wrap" do
           it "wraps each node within a reified copy of the tag passed" do
-            employees = (xml / "//employee").wrap("<wrapper/>")
-            assert_equal("wrapper", employees[0].parent.name)
-            assert_equal("employee", xml.search("//wrapper").first.children[0].name)
+            employees = xml.css("employee")
+            rval = employees.wrap("<wrapper/>")
+            wrappers = xml.css("wrapper")
+
+            assert_equal(rval, employees)
+            assert_equal(employees.length, wrappers.length)
+            employees.each do |employee|
+              assert_equal("wrapper", employee.parent.name)
+            end
+            wrappers.each do |wrapper|
+              assert_equal("staff", wrapper.parent.name)
+              assert_equal(1, wrapper.children.length)
+              assert_equal("employee", wrapper.children.first.name)
+            end
+          end
+
+          it "wraps each node within a dup of the Node argument" do
+            employees = xml.css("employee")
+            rval = employees.wrap(xml.create_element("wrapper"))
+            wrappers = xml.css("wrapper")
+
+            assert_equal(rval, employees)
+            assert_equal(employees.length, wrappers.length)
+            employees.each do |employee|
+              assert_equal("wrapper", employee.parent.name)
+            end
+            wrappers.each do |wrapper|
+              assert_equal("staff", wrapper.parent.name)
+              assert_equal(1, wrapper.children.length)
+              assert_equal("employee", wrapper.children.first.name)
+            end
           end
 
           it "handles various node types and handles recursive reparenting" do
-            xml = "<root><foo>contents</foo></root>"
-            doc = Nokogiri::XML(xml)
+            doc = Nokogiri::XML("<root><foo>contents</foo></root>")
             nodes = doc.at_css("root").xpath(".//* | .//*/text()") # foo and "contents"
             nodes.wrap("<wrapper/>")
             wrappers = doc.css("wrapper")
+
             assert_equal("root", wrappers.first.parent.name)
             assert_equal("foo", wrappers.first.children.first.name)
             assert_equal("foo", wrappers.last.parent.name)
@@ -565,18 +602,22 @@ module Nokogiri
                 <employee>goodbye</employee>
               </employees>
             EOXML
-            employees = frag.xpath(".//employee")
+            employees = frag.css("employee")
             employees.wrap("<wrapper/>")
             assert_equal("wrapper", employees[0].parent.name)
             assert_equal("employee", frag.at(".//wrapper").children.first.name)
           end
 
           it "preserves document structure" do
-            assert_equal("employeeId",
-              xml.at_xpath("//employee").children.detect { |j| !j.text? }.name)
+            assert_equal(
+              "employeeId",
+              xml.at_xpath("//employee").children.detect { |j| !j.text? }.name,
+            )
             xml.xpath("//employeeId[text()='EMP0001']").wrap("<wrapper/>")
-            assert_equal("wrapper",
-              xml.at_xpath("//employee").children.detect { |j| !j.text? }.name)
+            assert_equal(
+              "wrapper",
+              xml.at_xpath("//employee").children.detect { |j| !j.text? }.name,
+            )
           end
         end
 
@@ -793,8 +834,10 @@ module Nokogiri
           employees = xml.search("//employee")
           inspected = employees.inspect
 
-          assert_equal("[#{employees.map(&:inspect).join(", ")}]",
-            inspected)
+          assert_equal(
+            "[#{employees.map(&:inspect).join(", ")}]",
+            inspected,
+          )
         end
 
         it "should_not_splode_when_accessing_namespace_declarations_in_a_node_set" do
@@ -931,6 +974,12 @@ module Nokogiri
             assert_equal(2, node_set.length)
             assert_equal(doc1, node_set[0].document)
             assert_equal(doc2, node_set[1].document)
+          end
+        end
+
+        describe "empty sets" do
+          it "#to_html returns an empty string" do
+            assert_equal("", NodeSet.new(xml, []).to_html)
           end
         end
       end

@@ -61,7 +61,7 @@ class TestNokogiriHtmlDocument < Nokogiri::TestCase
           text = Nokogiri::HTML4.parse(html).at("title").inner_text
           assert_equal(
             orig.encode(enc).force_encoding(bin),
-            text.encode(enc).force_encoding(bin)
+            text.encode(enc).force_encoding(bin),
           )
         end
       end
@@ -79,8 +79,10 @@ class TestNokogiriHtmlDocument < Nokogiri::TestCase
           </html>
         eohtml
         doc = Nokogiri::HTML4(bad_charset, nil, "askldjfhalsdfjhlkasdfjh")
-        assert_equal(["http://tenderlovemaking.com/"],
-          doc.css("a").map { |a| a["href"] })
+        assert_equal(
+          ["http://tenderlovemaking.com/"],
+          doc.css("a").map { |a| a["href"] },
+        )
       end
 
       def test_empty_doc_encoding

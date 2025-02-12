@@ -679,6 +679,14 @@ module Nokogiri
           end
         end
 
+        def test_write_to_file_without_encoding
+          Tempfile.create do |io|
+            xml.write_to(io)
+            io.rewind
+            assert_equal(xml.to_xml, io.read)
+          end
+        end
+
         def test_serialize_with_block
           called = false
           conf = nil
@@ -745,8 +753,10 @@ module Nokogiri
         def test_ancestors
           address = xml.xpath("//address").first
           assert_equal(3, address.ancestors.length)
-          assert_equal(["employee", "staff", "document"],
-            address.ancestors.map(&:name))
+          assert_equal(
+            ["employee", "staff", "document"],
+            address.ancestors.map(&:name),
+          )
         end
 
         def test_read_only?
@@ -1064,32 +1074,57 @@ module Nokogiri
           XML
 
           namespaces = xml.namespaces # Document#namespace
-          assert_equal({ "xmlns" => "http://quux.com/",
-                         "xmlns:a" => "http://foo.com/",
-                         "xmlns:b" => "http://bar.com/", }, namespaces)
+          assert_equal(
+            {
+              "xmlns" => "http://quux.com/",
+              "xmlns:a" => "http://foo.com/",
+              "xmlns:b" => "http://bar.com/",
+            },
+            namespaces,
+          )
 
           namespaces = xml.root.namespaces
-          assert_equal({ "xmlns" => "http://quux.com/",
-                         "xmlns:a" => "http://foo.com/",
-                         "xmlns:b" => "http://bar.com/", }, namespaces)
+          assert_equal(
+            {
+              "xmlns" => "http://quux.com/",
+              "xmlns:a" => "http://foo.com/",
+              "xmlns:b" => "http://bar.com/",
+            },
+            namespaces,
+          )
 
           namespaces = xml.at_xpath("//xmlns:y").namespaces
-          assert_equal({ "xmlns" => "http://quux.com/",
-                         "xmlns:a" => "http://foo.com/",
-                         "xmlns:b" => "http://bar.com/",
-                         "xmlns:c" => "http://bazz.com/", }, namespaces)
+          assert_equal(
+            {
+              "xmlns" => "http://quux.com/",
+              "xmlns:a" => "http://foo.com/",
+              "xmlns:b" => "http://bar.com/",
+              "xmlns:c" => "http://bazz.com/",
+            },
+            namespaces,
+          )
 
           namespaces = xml.at_xpath("//xmlns:z").namespaces
-          assert_equal({ "xmlns" => "http://quux.com/",
-                         "xmlns:a" => "http://foo.com/",
-                         "xmlns:b" => "http://bar.com/",
-                         "xmlns:c" => "http://bazz.com/", }, namespaces)
+          assert_equal(
+            {
+              "xmlns" => "http://quux.com/",
+              "xmlns:a" => "http://foo.com/",
+              "xmlns:b" => "http://bar.com/",
+              "xmlns:c" => "http://bazz.com/",
+            },
+            namespaces,
+          )
 
           namespaces = xml.at_xpath("//xmlns:a").namespaces
-          assert_equal({ "xmlns" => "http://quux.com/",
-                         "xmlns:a" => "http://foo.com/",
-                         "xmlns:b" => "http://bar.com/",
-                         "xmlns:c" => "http://newc.com/", }, namespaces)
+          assert_equal(
+            {
+              "xmlns" => "http://quux.com/",
+              "xmlns:a" => "http://foo.com/",
+              "xmlns:b" => "http://bar.com/",
+              "xmlns:c" => "http://newc.com/",
+            },
+            namespaces,
+          )
         end
 
         def test_namespace
@@ -1297,13 +1332,65 @@ module Nokogiri
           end
         end
 
-        def test_wrap
-          xml = '<root><thing><div class="title">important thing</div></thing></root>'
-          doc = Nokogiri::XML(xml)
-          thing = doc.at_css("thing")
-          thing.wrap("<wrapper/>")
-          assert_equal("wrapper", thing.parent.name)
-          assert_equal("thing", doc.at_css("wrapper").children.first.name)
+        describe "#wrap" do
+          let(:xml) { "<root><thing><div>important thing</div></thing></root>" }
+          let(:doc) { Nokogiri::XML(xml) }
+
+          describe "string markup argument" do
+            it "parses and wraps" do
+              thing = doc.at_css("thing")
+              rval = thing.wrap("<wrapper/>")
+              wrapper = doc.at_css("wrapper")
+
+              assert_equal(rval, thing)
+              assert_equal(wrapper, thing.parent)
+              assert_equal("root", wrapper.parent.name)
+              assert_equal(1, wrapper.children.length)
+              assert_equal("thing", wrapper.children.first.name)
+            end
+
+            it "wraps unparented nodes" do
+              thing = doc.create_element("thing")
+              thing.wrap("<wrapper/>")
+
+              assert_equal("wrapper", thing.parent.name)
+              assert_nil(thing.parent.parent)
+            end
+          end
+
+          describe "Node argument" do
+            it "wraps using a dup of the node" do
+              thing = doc.at_css("thing")
+              wrapper_template = doc.create_element("wrapper")
+              rval = thing.wrap(wrapper_template)
+              wrapper = doc.at_css("wrapper")
+
+              assert_equal(rval, thing)
+              refute_equal(wrapper, wrapper_template)
+              assert_equal(wrapper, thing.parent)
+              assert_equal("root", wrapper.parent.name)
+              assert_equal(1, wrapper.children.length)
+              assert_equal("thing", wrapper.children.first.name)
+            end
+
+            it "wraps unparented nodes" do
+              thing = doc.create_element("thing")
+              wrapper_template = doc.create_element("wrapper")
+              thing.wrap(wrapper_template)
+
+              refute_equal(wrapper_template, thing.parent)
+              assert_equal("wrapper", thing.parent.name)
+              assert_nil(thing.parent.parent)
+            end
+          end
+
+          it "raises an ArgumentError on other types" do
+            thing = doc.at_css("thing")
+
+            assert_raises(ArgumentError) do
+              thing.wrap(1)
+            end
+          end
         end
 
         describe "#line" do

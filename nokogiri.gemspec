@@ -8,7 +8,7 @@ rescue LoadError
 end
 
 Gem::Specification.new do |spec|
-  java_p = /java/.match?(RUBY_PLATFORM)
+  java_p = RUBY_PLATFORM.include?("java")
 
   spec.name = "nokogiri"
   spec.version = defined?(Nokogiri::VERSION) ? Nokogiri::VERSION : "0.0.0"
@@ -17,7 +17,7 @@ Gem::Specification.new do |spec|
   spec.description = <<~EOF
     Nokogiri (鋸) makes it easy and painless to work with XML and HTML from Ruby. It provides a
     sensible, easy-to-understand API for reading, writing, modifying, and querying documents. It is
-    fast and standards-compliant by relying on native parsers like libxml2 (C) and xerces (Java).
+    fast and standards-compliant by relying on native parsers like libxml2, libgumbo, or xerces.
   EOF
 
   spec.authors = [
@@ -40,7 +40,7 @@ Gem::Specification.new do |spec|
 
   spec.license = "MIT"
 
-  spec.required_ruby_version = ">= 2.6.0"
+  spec.required_ruby_version = ">= 2.7.0"
 
   spec.homepage = "https://nokogiri.org"
   spec.metadata = {

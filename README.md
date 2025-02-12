@@ -2,7 +2,7 @@
 
 # Nokogiri
 
-Nokogiri (鋸) makes it easy and painless to work with XML and HTML from Ruby. It provides a sensible, easy-to-understand API for [reading](https://nokogiri.org/tutorials/parsing_an_html_xml_document.html), writing, [modifying](https://nokogiri.org/tutorials/modifying_an_html_xml_document.html), and [querying](https://nokogiri.org/tutorials/searching_a_xml_html_document.html) documents. It is fast and standards-compliant by relying on native parsers like libxml2 (CRuby) and xerces (JRuby).
+Nokogiri (鋸) makes it easy and painless to work with XML and HTML from Ruby. It provides a sensible, easy-to-understand API for [reading](https://nokogiri.org/tutorials/parsing_an_html_xml_document.html), writing, [modifying](https://nokogiri.org/tutorials/modifying_an_html_xml_document.html), and [querying](https://nokogiri.org/tutorials/searching_a_xml_html_document.html) documents. It is fast and standards-compliant by relying on native parsers like libxml2, libgumbo, and xerces.
 
 ## Guiding Principles
 
@@ -39,10 +39,6 @@ Some guiding principles Nokogiri tries to follow:
 ## Support, Getting Help, and Reporting Issues
 
 All official documentation is posted at https://nokogiri.org (the source for which is at https://github.com/sparklemotion/nokogiri.org/, and we welcome contributions).
-
-Consider subscribing to [Tidelift][tidelift] which provides license assurances and timely security notifications for your open source dependencies, including Nokogiri. [Tidelift][tidelift] subscriptions also help the Nokogiri maintainers fund our [automated testing](https://ci.nokogiri.org) which in turn allows us to ship releases, bugfixes, and security updates more often.
-
-  [tidelift]: https://tidelift.com/subscription/pkg/rubygems-nokogiri?utm_source=rubygems-nokogiri&utm_medium=referral&utm_campaign=readme
 
 ### Reading
 
@@ -102,12 +98,21 @@ We bump `Major.Minor.Patch` versions following this guidance:
 - Updating packaged libraries for security-related reasons.
 
 
+### Sponsorship
+
+You can help sponsor the maintainers of this software through one of these organizations:
+
+- [github.com/sponsors/flavorjones](https://github.com/sponsors/flavorjones)
+- [opencollective.com/nokogiri](https://opencollective.com/nokogiri)
+- [tidelift.com/subscription/pkg/rubygems-nokogiri](https://tidelift.com/subscription/pkg/rubygems-nokogiri?utm_source=rubygems-nokogiri&utm_medium=referral&utm_campaign=readme)
+
+
 ## Installation
 
 Requirements:
 
-- Ruby >= 2.6
-- JRuby >= 9.3.0.0
+- Ruby >= 2.7
+- JRuby >= 9.4.0.0
 
 
 ### Native Gems: Faster, more reliable installation
@@ -124,7 +129,7 @@ Nokogiri ships pre-compiled, "native" gems for the following platforms:
   - Note that musl platforms like Alpine **are** supported
 - Darwin/MacOS: `x86_64-darwin` and `arm64-darwin`
 - Windows: `x86-mingw32`, `x64-mingw32`, and `x64-mingw-ucrt`
-- Java: any platform running JRuby 9.3 or higher
+- Java: any platform running JRuby 9.4 or higher
 
 To determine whether your system supports one of these gems, look at the output of `bundle platform` or `ruby -e 'puts Gem::Platform.local.to_s'`.
 

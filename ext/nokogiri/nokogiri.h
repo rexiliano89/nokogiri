@@ -1,6 +1,8 @@
 #ifndef NOKOGIRI_NATIVE
 #define NOKOGIRI_NATIVE
 
+#include <ruby/defines.h> // https://github.com/sparklemotion/nokogiri/issues/2696
+
 #ifdef _MSC_VER
 #  ifndef WIN32_LEAN_AND_MEAN
 #    define WIN32_LEAN_AND_MEAN
@@ -22,7 +24,6 @@
 #  define NOKOPUBFUN
 #  define NOKOPUBVAR extern
 #endif
-
 
 #include <stdlib.h>
 #include <string.h>
@@ -50,6 +51,7 @@
 #include <libxslt/xsltconfig.h>
 #include <libxslt/xsltutils.h>
 #include <libxslt/transform.h>
+#include <libxslt/imports.h>
 #include <libxslt/xsltInternals.h>
 
 #include <libexslt/exslt.h>
@@ -75,14 +77,6 @@ xmlNodePtr xmlLastElementChild(xmlNodePtr parent);
 #define NOKOGIRI_STR_NEW(str, len) rb_external_str_new_with_enc((const char *)(str), (long)(len), rb_utf8_encoding())
 #define RBSTR_OR_QNIL(_str) (_str ? NOKOGIRI_STR_NEW2(_str) : Qnil)
 
-#ifdef DEBUG
-#  define NOKOGIRI_DEBUG_START(p) if (getenv("NOKOGIRI_NO_FREE")) return ; if (getenv("NOKOGIRI_DEBUG")) fprintf(stderr,"nokogiri: %s:%d %p start\n", __FILE__, __LINE__, p);
-#  define NOKOGIRI_DEBUG_END(p) if (getenv("NOKOGIRI_DEBUG")) fprintf(stderr,"nokogiri: %s:%d %p end\n", __FILE__, __LINE__, p);
-#else
-#  define NOKOGIRI_DEBUG_START(p)
-#  define NOKOGIRI_DEBUG_END(p)
-#endif
-
 #ifndef NORETURN_DECL
 #  if defined(__GNUC__)
 #    define NORETURN_DECL __attribute__ ((noreturn))
@@ -99,6 +93,9 @@ xmlNodePtr xmlLastElementChild(xmlNodePtr parent);
 #  endif
 #endif
 
+#if defined(TRUFFLERUBY) && !defined(NOKOGIRI_PACKAGED_LIBRARIES)
+#  define TRUFFLERUBY_NOKOGIRI_SYSTEM_LIBRARIES
+#endif
 
 NOKOPUBVAR VALUE mNokogiri ;
 NOKOPUBVAR VALUE mNokogiriGumbo ;
@@ -172,12 +169,14 @@ typedef struct _nokogiriXsltStylesheetTuple {
 
 void noko_xml_document_pin_node(xmlNodePtr);
 void noko_xml_document_pin_namespace(xmlNsPtr, xmlDocPtr);
+int noko_xml_document_has_wrapped_blank_nodes_p(xmlDocPtr c_document);
 
 int noko_io_read(void *ctx, char *buffer, int len);
 int noko_io_write(void *ctx, char *buffer, int len);
 int noko_io_close(void *ctx);
 
 #define Noko_Node_Get_Struct(obj,type,sval) ((sval) = (type*)DATA_PTR(obj))
+#define Noko_Namespace_Get_Struct(obj,type,sval) ((sval) = (type*)DATA_PTR(obj))
 
 VALUE noko_xml_node_wrap(VALUE klass, xmlNodePtr node) ;
 VALUE noko_xml_node_wrap_node_set_result(xmlNodePtr node, VALUE node_set) ;
@@ -189,11 +188,20 @@ VALUE noko_xml_namespace_wrap_xpath_copy(xmlNsPtr node);
 VALUE noko_xml_element_content_wrap(VALUE doc, xmlElementContentPtr element);
 
 VALUE noko_xml_node_set_wrap(xmlNodeSetPtr node_set, VALUE document) ;
+xmlNodeSetPtr noko_xml_node_set_unwrap(VALUE rb_node_set) ;
 
 VALUE noko_xml_document_wrap_with_init_args(VALUE klass, xmlDocPtr doc, int argc, VALUE *argv);
 VALUE noko_xml_document_wrap(VALUE klass, xmlDocPtr doc);
+xmlDocPtr noko_xml_document_unwrap(VALUE rb_document);
 NOKOPUBFUN VALUE Nokogiri_wrap_xml_document(VALUE klass,
     xmlDocPtr doc); /* deprecated. use noko_xml_document_wrap() instead. */
+
+xmlSAXHandlerPtr noko_sax_handler_unwrap(VALUE rb_sax_handler);
+
+xmlParserCtxtPtr noko_xml_sax_push_parser_unwrap(VALUE rb_parser);
+
+VALUE noko_xml_sax_parser_context_wrap(VALUE klass, xmlParserCtxtPtr c_context);
+xmlParserCtxtPtr noko_xml_sax_parser_context_unwrap(VALUE rb_context);
 
 #define DOC_RUBY_OBJECT_TEST(x) ((nokogiriTuplePtr)(x->_private))
 #define DOC_RUBY_OBJECT(x) (((nokogiriTuplePtr)(x->_private))->doc)

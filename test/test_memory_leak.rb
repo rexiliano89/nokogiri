@@ -89,14 +89,6 @@ class TestMemoryLeak < Nokogiri::TestCase
       puts "\ndike is not installed, skipping memory leak test"
     end
 
-    def test_node_set_namespace_mem_leak
-      xml = Nokogiri::XML("<foo></foo>")
-      ctx = Nokogiri::XML::XPathContext.new(xml)
-      loop do
-        ctx.evaluate("//namespace::*")
-      end
-    end
-
     def test_leak_on_node_replace
       loop do
         doc = Nokogiri.XML("<root><foo /></root>")
@@ -161,7 +153,7 @@ class TestMemoryLeak < Nokogiri::TestCase
       end
     end
 
-    def test_leaking_namespace_node_strings
+    def test_builder_namespace_node_strings_no_prefix
       # see https://github.com/sparklemotion/nokogiri/issues/1810 for memory leak report
       ns = { "xmlns" => "http://schemas.xmlsoap.org/soap/envelope/" }
       20.times do
@@ -176,7 +168,7 @@ class TestMemoryLeak < Nokogiri::TestCase
       end
     end
 
-    def test_leaking_namespace_node_strings_with_prefix
+    def test_builder_namespace_node_strings_with_prefix
       # see https://github.com/sparklemotion/nokogiri/issues/1810 for memory leak report
       ns = { "xmlns:foo" => "http://schemas.xmlsoap.org/soap/envelope/" }
       20.times do
@@ -186,6 +178,68 @@ class TestMemoryLeak < Nokogiri::TestCase
               xml.send(:Foobar, ns)
             end
           end
+        end
+        puts MemInfo.rss
+      end
+    end
+
+    def test_document_remove_namespaces_with_ruby_objects
+      xml = <<~XML
+        <root xmlns:a="http://a.flavorjon.es/" xmlns:b="http://b.flavorjon.es/">
+          <a:foo>hello from a</a:foo>
+          <b:foo>hello from b</b:foo>
+          <container xmlns:c="http://c.flavorjon.es/">
+            <c:foo c:attr='attr-value'>hello from c</c:foo>
+          </container>
+        </root>
+      XML
+
+      20.times do
+        10_000.times do
+          doc = Nokogiri::XML::Document.parse(xml)
+          doc.namespaces.each(&:inspect)
+          doc.remove_namespaces!
+        end
+        puts MemInfo.rss
+      end
+    end
+
+    def test_document_remove_namespaces_without_ruby_objects
+      xml = <<~XML
+        <root xmlns:a="http://a.flavorjon.es/" xmlns:b="http://b.flavorjon.es/">
+          <a:foo>hello from a</a:foo>
+          <b:foo>hello from b</b:foo>
+          <container xmlns:c="http://c.flavorjon.es/">
+            <c:foo c:attr='attr-value'>hello from c</c:foo>
+          </container>
+        </root>
+      XML
+
+      20.times do
+        20_000.times do
+          doc = Nokogiri::XML::Document.parse(xml)
+          doc.remove_namespaces!
+        end
+        puts MemInfo.rss
+      end
+    end
+
+    def test_xpath_namespaces
+      xml = <<~XML
+        <root xmlns:a="http://a.flavorjon.es/" xmlns:b="http://b.flavorjon.es/">
+          <a:foo>hello from a</a:foo>
+          <b:foo>hello from b</b:foo>
+          <container xmlns:c="http://c.flavorjon.es/">
+            <c:foo c:attr='attr-value'>hello from c</c:foo>
+          </container>
+        </root>
+      XML
+      doc = Nokogiri::XML::Document.parse(xml)
+      ctx = Nokogiri::XML::XPathContext.new(doc)
+
+      20.times do
+        10_000.times do
+          ctx.evaluate("//namespace::*")
         end
         puts MemInfo.rss
       end
@@ -217,6 +271,47 @@ class TestMemoryLeak < Nokogiri::TestCase
       end
     end
   end # if NOKOGIRI_GC
+
+  def test_object_space_memsize_of
+    require "objspace"
+    skip("memsize_of not defined") unless ObjectSpace.respond_to?(:memsize_of)
+
+    base_size = ObjectSpace.memsize_of(Nokogiri::XML(<<~XML))
+      <root>
+        <child>asdf</child>
+      </root>
+    XML
+
+    more_children_size = ObjectSpace.memsize_of(Nokogiri::XML(<<~XML))
+      <root>
+        <child>asdf</child>
+        <child>asdf</child>
+        <child>asdf</child>
+      </root>
+    XML
+    assert(more_children_size > base_size, "adding children should increase memsize")
+
+    attributes_size = ObjectSpace.memsize_of(Nokogiri::XML(<<~XML))
+      <root>
+        <child a="b" c="d">asdf</child>
+      </root>
+    XML
+    assert(attributes_size > base_size, "adding attributes should increase memsize")
+
+    string_size = ObjectSpace.memsize_of(Nokogiri::XML(<<~XML))
+      <root>
+        <child>asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdf</child>
+      </root>
+    XML
+    assert(string_size > base_size, "longer strings should increase memsize")
+
+    bigger_name_size = ObjectSpace.memsize_of(Nokogiri::XML(<<~XML))
+      <root>
+        <superduperamazingchild>asdf</superduperamazingchild>
+      </root>
+    XML
+    assert(bigger_name_size > base_size, "longer tags should increase memsize")
+  end
 
   module MemInfo
     # from https://stackoverflow.com/questions/7220896/get-current-ruby-process-memory-usage

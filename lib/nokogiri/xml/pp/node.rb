@@ -13,9 +13,14 @@ module Nokogiri
             !attribute || (attribute.respond_to?(:empty?) && attribute.empty?)
           rescue NoMethodError
             true
-          end.map do |attribute|
-            "#{attribute.to_s.sub(/_\w+/, "s")}=#{send(attribute).inspect}"
-          end.join(" ")
+          end
+          attributes = if inspect_attributes.length == 1
+            send(attributes.first).inspect
+          else
+            attributes.map do |attribute|
+              "#{attribute}=#{send(attribute).inspect}"
+            end.join(" ")
+          end
           "#<#{self.class.name}:#{format("0x%x", object_id)} #{attributes}>"
         end
 
@@ -23,9 +28,10 @@ module Nokogiri
           nice_name = self.class.name.split("::").last
           pp.group(2, "#(#{nice_name}:#{format("0x%x", object_id)} {", "})") do
             pp.breakable
-            attrs = inspect_attributes.map do |t|
+
+            attrs = inspect_attributes.filter_map do |t|
               [t, send(t)] if respond_to?(t)
-            end.compact.find_all do |x|
+            end.find_all do |x|
               if x.last
                 if COLLECTIONS.include?(x.first)
                   !x.last.empty?
@@ -35,19 +41,24 @@ module Nokogiri
               end
             end
 
-            pp.seplist(attrs) do |v|
-              if COLLECTIONS.include?(v.first)
-                pp.group(2, "#{v.first.to_s.sub(/_\w+$/, "s")} = [", "]") do
-                  pp.breakable
-                  pp.seplist(v.last) do |item|
-                    pp.pp(item)
+            if inspect_attributes.length == 1
+              pp.pp(attrs.first.last)
+            else
+              pp.seplist(attrs) do |v|
+                if COLLECTIONS.include?(v.first)
+                  pp.group(2, "#{v.first} = [", "]") do
+                    pp.breakable
+                    pp.seplist(v.last) do |item|
+                      pp.pp(item)
+                    end
                   end
+                else
+                  pp.text("#{v.first} = ")
+                  pp.pp(v.last)
                 end
-              else
-                pp.text("#{v.first} = ")
-                pp.pp(v.last)
               end
             end
+
             pp.breakable
           end
         end

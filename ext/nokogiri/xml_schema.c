@@ -3,12 +3,19 @@
 VALUE cNokogiriXmlSchema;
 
 static void
-dealloc(xmlSchemaPtr schema)
+xml_schema_deallocate(void *data)
 {
-  NOKOGIRI_DEBUG_START(schema);
+  xmlSchemaPtr schema = data;
   xmlSchemaFree(schema);
-  NOKOGIRI_DEBUG_END(schema);
 }
+
+static const rb_data_type_t xml_schema_type = {
+  .wrap_struct_name = "Nokogiri::XML::Schema",
+  .function = {
+    .dfree = xml_schema_deallocate,
+  },
+  .flags = RUBY_TYPED_FREE_IMMEDIATELY | RUBY_TYPED_WB_PROTECTED,
+};
 
 /*
  * call-seq:
@@ -24,8 +31,8 @@ validate_document(VALUE self, VALUE document)
   xmlSchemaValidCtxtPtr valid_ctxt;
   VALUE errors;
 
-  Data_Get_Struct(self, xmlSchema, schema);
-  Noko_Node_Get_Struct(document, xmlDoc, doc);
+  TypedData_Get_Struct(self, xmlSchema, &xml_schema_type, schema);
+  doc = noko_xml_document_unwrap(document);
 
   errors = rb_ary_new();
 
@@ -65,7 +72,7 @@ validate_file(VALUE self, VALUE rb_filename)
   const char *filename ;
   VALUE errors;
 
-  Data_Get_Struct(self, xmlSchema, schema);
+  TypedData_Get_Struct(self, xmlSchema, &xml_schema_type, schema);
   filename = (const char *)StringValueCStr(rb_filename) ;
 
   errors = rb_ary_new();
@@ -92,185 +99,150 @@ validate_file(VALUE self, VALUE rb_filename)
   return errors;
 }
 
+static VALUE
+xml_schema_parse_schema(
+  VALUE klass,
+  xmlSchemaParserCtxtPtr c_parser_context,
+  VALUE rb_parse_options
+)
+{
+  VALUE rb_errors;
+  int parse_options_int;
+  xmlSchemaPtr c_schema;
+  xmlExternalEntityLoader old_loader = 0;
+  VALUE rb_schema;
+
+  if (NIL_P(rb_parse_options)) {
+    rb_parse_options = rb_const_get_at(
+                         rb_const_get_at(mNokogiriXml, rb_intern("ParseOptions")),
+                         rb_intern("DEFAULT_SCHEMA")
+                       );
+  }
+
+  rb_errors = rb_ary_new();
+  xmlSetStructuredErrorFunc((void *)rb_errors, Nokogiri_error_array_pusher);
+
+#ifdef HAVE_XMLSCHEMASETPARSERSTRUCTUREDERRORS
+  xmlSchemaSetParserStructuredErrors(
+    c_parser_context,
+    Nokogiri_error_array_pusher,
+    (void *)rb_errors
+  );
+#endif
+
+  parse_options_int = (int)NUM2INT(rb_funcall(rb_parse_options, rb_intern("to_i"), 0));
+  if (parse_options_int & XML_PARSE_NONET) {
+    old_loader = xmlGetExternalEntityLoader();
+    xmlSetExternalEntityLoader(xmlNoNetExternalEntityLoader);
+  }
+
+  c_schema = xmlSchemaParse(c_parser_context);
+
+  if (old_loader) {
+    xmlSetExternalEntityLoader(old_loader);
+  }
+
+  xmlSetStructuredErrorFunc(NULL, NULL);
+  xmlSchemaFreeParserCtxt(c_parser_context);
+
+  if (NULL == c_schema) {
+    xmlErrorPtr error = xmlGetLastError();
+    if (error) {
+      Nokogiri_error_raise(NULL, error);
+    } else {
+      rb_raise(rb_eRuntimeError, "Could not parse document");
+    }
+
+    return Qnil;
+  }
+
+  rb_schema = TypedData_Wrap_Struct(klass, &xml_schema_type, c_schema);
+  rb_iv_set(rb_schema, "@errors", rb_errors);
+  rb_iv_set(rb_schema, "@parse_options", rb_parse_options);
+
+  return rb_schema;
+}
+
 /*
  * call-seq:
- *  read_memory(string)
+ *   read_memory(string) → Nokogiri::XML::Schema
  *
- * Create a new Schema from the contents of +string+
+ * Create a new schema parsed from the contents of +string+
+ *
+ * [Parameters]
+ * - +string+: String containing XML to be parsed as a schema
+ *
+ * [Returns] Nokogiri::XML::Schema
  */
 static VALUE
 read_memory(int argc, VALUE *argv, VALUE klass)
 {
-  VALUE content;
-  VALUE parse_options;
-  int parse_options_int;
-  xmlSchemaParserCtxtPtr ctx;
-  xmlSchemaPtr schema;
-  VALUE errors;
-  VALUE rb_schema;
-  int scanned_args = 0;
-  xmlExternalEntityLoader old_loader = 0;
+  VALUE rb_content;
+  VALUE rb_parse_options;
+  xmlSchemaParserCtxtPtr c_parser_context;
 
-  scanned_args = rb_scan_args(argc, argv, "11", &content, &parse_options);
-  if (scanned_args == 1) {
-    parse_options = rb_const_get_at(rb_const_get_at(mNokogiriXml, rb_intern("ParseOptions")), rb_intern("DEFAULT_SCHEMA"));
-  }
-  parse_options_int = (int)NUM2INT(rb_funcall(parse_options, rb_intern("to_i"), 0));
+  rb_scan_args(argc, argv, "11", &rb_content, &rb_parse_options);
 
-  ctx = xmlSchemaNewMemParserCtxt((const char *)StringValuePtr(content), (int)RSTRING_LEN(content));
+  c_parser_context = xmlSchemaNewMemParserCtxt(
+                       (const char *)StringValuePtr(rb_content),
+                       (int)RSTRING_LEN(rb_content)
+                     );
 
-  errors = rb_ary_new();
-  xmlSetStructuredErrorFunc((void *)errors, Nokogiri_error_array_pusher);
-
-#ifdef HAVE_XMLSCHEMASETPARSERSTRUCTUREDERRORS
-  xmlSchemaSetParserStructuredErrors(
-    ctx,
-    Nokogiri_error_array_pusher,
-    (void *)errors
-  );
-#endif
-
-  if (parse_options_int & XML_PARSE_NONET) {
-    old_loader = xmlGetExternalEntityLoader();
-    xmlSetExternalEntityLoader(xmlNoNetExternalEntityLoader);
-  }
-
-  schema = xmlSchemaParse(ctx);
-
-  if (old_loader) {
-    xmlSetExternalEntityLoader(old_loader);
-  }
-
-  xmlSetStructuredErrorFunc(NULL, NULL);
-  xmlSchemaFreeParserCtxt(ctx);
-
-  if (NULL == schema) {
-    xmlErrorPtr error = xmlGetLastError();
-    if (error) {
-      Nokogiri_error_raise(NULL, error);
-    } else {
-      rb_raise(rb_eRuntimeError, "Could not parse document");
-    }
-
-    return Qnil;
-  }
-
-  rb_schema = Data_Wrap_Struct(klass, 0, dealloc, schema);
-  rb_iv_set(rb_schema, "@errors", errors);
-  rb_iv_set(rb_schema, "@parse_options", parse_options);
-
-  return rb_schema;
-}
-
-/* Schema creation will remove and deallocate "blank" nodes.
- * If those blank nodes have been exposed to Ruby, they could get freed
- * out from under the VALUE pointer.  This function checks to see if any of
- * those nodes have been exposed to Ruby, and if so we should raise an exception.
- */
-static int
-has_blank_nodes_p(VALUE cache)
-{
-  long i;
-
-  if (NIL_P(cache)) {
-    return 0;
-  }
-
-  for (i = 0; i < RARRAY_LEN(cache); i++) {
-    xmlNodePtr node;
-    VALUE element = rb_ary_entry(cache, i);
-    Noko_Node_Get_Struct(element, xmlNode, node);
-    if (xmlIsBlankNode(node)) {
-      return 1;
-    }
-  }
-
-  return 0;
+  return xml_schema_parse_schema(klass, c_parser_context, rb_parse_options);
 }
 
 /*
  * call-seq:
- *  from_document(doc)
+ *   from_document(document) → Nokogiri::XML::Schema
  *
- * Create a new Schema from the Nokogiri::XML::Document +doc+
+ * Create a new schema parsed from the +document+.
+ *
+ * [Parameters]
+ * - +document+: Nokogiri::XML::Document to be parsed
+ *
+ * [Returns] Nokogiri::XML::Schema
  */
 static VALUE
 from_document(int argc, VALUE *argv, VALUE klass)
 {
-  VALUE document;
-  VALUE parse_options;
-  int parse_options_int;
-  xmlDocPtr doc;
-  xmlSchemaParserCtxtPtr ctx;
-  xmlSchemaPtr schema;
-  VALUE errors;
+  VALUE rb_document;
+  VALUE rb_parse_options;
   VALUE rb_schema;
-  int scanned_args = 0;
-  xmlExternalEntityLoader old_loader = 0;
+  xmlDocPtr c_document;
+  xmlSchemaParserCtxtPtr c_parser_context;
+  int defensive_copy_p = 0;
 
-  scanned_args = rb_scan_args(argc, argv, "11", &document, &parse_options);
+  rb_scan_args(argc, argv, "11", &rb_document, &rb_parse_options);
 
-  Noko_Node_Get_Struct(document, xmlDoc, doc);
-  doc = doc->doc; /* In case someone passes us a node. ugh. */
-
-  if (scanned_args == 1) {
-    parse_options = rb_const_get_at(rb_const_get_at(mNokogiriXml, rb_intern("ParseOptions")), rb_intern("DEFAULT_SCHEMA"));
-  }
-  parse_options_int = (int)NUM2INT(rb_funcall(parse_options, rb_intern("to_i"), 0));
-
-  if (has_blank_nodes_p(DOC_NODE_CACHE(doc))) {
-    rb_raise(rb_eArgError, "Creating a schema from a document that has blank nodes exposed to Ruby is dangerous");
-  }
-
-  ctx = xmlSchemaNewDocParserCtxt(doc);
-
-  errors = rb_ary_new();
-  xmlSetStructuredErrorFunc((void *)errors, Nokogiri_error_array_pusher);
-
-#ifdef HAVE_XMLSCHEMASETPARSERSTRUCTUREDERRORS
-  xmlSchemaSetParserStructuredErrors(
-    ctx,
-    Nokogiri_error_array_pusher,
-    (void *)errors
-  );
-#endif
-
-  if (parse_options_int & XML_PARSE_NONET) {
-    old_loader = xmlGetExternalEntityLoader();
-    xmlSetExternalEntityLoader(xmlNoNetExternalEntityLoader);
+  if (rb_obj_is_kind_of(rb_document, cNokogiriXmlDocument)) {
+    c_document = noko_xml_document_unwrap(rb_document);
+  } else {
+    xmlNodePtr deprecated_node_type_arg;
+    // TODO: deprecate allowing Node
+    NOKO_WARN_DEPRECATION("Passing a Node as the first parameter to Schema.from_document is deprecated. Please pass a Document instead. This will become an error in a future release of Nokogiri.");
+    Noko_Node_Get_Struct(rb_document, xmlNode, deprecated_node_type_arg);
+    c_document = deprecated_node_type_arg->doc;
   }
 
-  schema = xmlSchemaParse(ctx);
-
-  if (old_loader) {
-    xmlSetExternalEntityLoader(old_loader);
+  if (noko_xml_document_has_wrapped_blank_nodes_p(c_document)) {
+    // see https://github.com/sparklemotion/nokogiri/pull/2001
+    c_document = xmlCopyDoc(c_document, 1);
+    defensive_copy_p = 1;
   }
 
-  xmlSetStructuredErrorFunc(NULL, NULL);
-  xmlSchemaFreeParserCtxt(ctx);
+  c_parser_context = xmlSchemaNewDocParserCtxt(c_document);
+  rb_schema = xml_schema_parse_schema(klass, c_parser_context, rb_parse_options);
 
-  if (NULL == schema) {
-    xmlErrorPtr error = xmlGetLastError();
-    if (error) {
-      Nokogiri_error_raise(NULL, error);
-    } else {
-      rb_raise(rb_eRuntimeError, "Could not parse document");
-    }
-
-    return Qnil;
+  if (defensive_copy_p) {
+    xmlFreeDoc(c_document);
+    c_document = NULL;
   }
-
-  rb_schema = Data_Wrap_Struct(klass, 0, dealloc, schema);
-  rb_iv_set(rb_schema, "@errors", errors);
-  rb_iv_set(rb_schema, "@parse_options", parse_options);
 
   return rb_schema;
-
-  return Qnil;
 }
 
 void
-noko_init_xml_schema()
+noko_init_xml_schema(void)
 {
   cNokogiriXmlSchema = rb_define_class_under(mNokogiriXml, "Schema", rb_cObject);
 

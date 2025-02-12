@@ -1,4 +1,4 @@
-# encoding: UTF-8
+# encoding: utf-8
 # frozen_string_literal: true
 
 require "helper"
@@ -8,8 +8,10 @@ module Nokogiri
     class TestNodeEncoding < Nokogiri::TestCase
       def test_serialize_encoding_xml
         @xml = Nokogiri::XML(File.open(SHIFT_JIS_XML))
-        assert_equal(@xml.encoding.downcase,
-          @xml.serialize.encoding.name.downcase)
+        assert_equal(
+          @xml.encoding.downcase,
+          @xml.serialize.encoding.name.downcase,
+        )
 
         @doc = Nokogiri::XML(@xml.serialize)
         assert_equal(@xml.serialize, @doc.serialize)

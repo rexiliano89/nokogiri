@@ -19,7 +19,7 @@ new (int argc, VALUE *argv, VALUE klass)
 
   rb_scan_args(argc, argv, "1*", &document, &rest);
 
-  Data_Get_Struct(document, xmlDoc, xml_doc);
+  xml_doc = noko_xml_document_unwrap(document);
 
   node = xmlNewDocFragment(xml_doc->doc);
 
@@ -32,7 +32,7 @@ new (int argc, VALUE *argv, VALUE klass)
 }
 
 void
-noko_init_xml_document_fragment()
+noko_init_xml_document_fragment(void)
 {
   assert(cNokogiriXmlNode);
   /*

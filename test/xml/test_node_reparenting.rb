@@ -386,8 +386,11 @@ module Nokogiri
 
                 inserted = dest_node.add_child(source_node)
 
-                assert_equal("attrval", inserted.attribute_with_ns("attr", "ns2")&.value,
-                  "inserted node attribute should be namespaced")
+                assert_equal(
+                  "attrval",
+                  inserted.attribute_with_ns("attr", "ns2")&.value,
+                  "inserted node attribute should be namespaced",
+                )
               end
             end
           end
@@ -421,7 +424,7 @@ module Nokogiri
                       "xmlns" => "http://tenderlovemaking.com/",
                       "xmlns:foo" => "http://flavorjon.es/",
                     },
-                    reparented.namespaces
+                    reparented.namespaces,
                   )
                 end
               end
@@ -443,7 +446,7 @@ module Nokogiri
                       "xmlns:foo" => "http://flavorjon.es/",
                       "xmlns:baz" => "http://tenderlovemaking.com/",
                     },
-                    reparented.namespaces
+                    reparented.namespaces,
                   )
                 end
               end
@@ -469,7 +472,7 @@ module Nokogiri
                       "xmlns" => "http://tenderlovemaking.com/",
                       "xmlns:foo" => "http://flavorjon.es/",
                     },
-                    reparented.namespaces
+                    reparented.namespaces,
                   )
                 end
               end
@@ -490,7 +493,7 @@ module Nokogiri
                       "xmlns" => "http://tenderlovemaking.com/",
                       "xmlns:foo" => "http://flavorjon.es/",
                     },
-                    reparented.namespaces
+                    reparented.namespaces,
                   )
                 end
               end
@@ -511,7 +514,7 @@ module Nokogiri
                       "xmlns" => "http://flavorjon.es/",
                       "xmlns:foo" => "http://flavorjon.es/",
                     },
-                    reparented.namespaces
+                    reparented.namespaces,
                   )
                 end
               end
@@ -533,7 +536,7 @@ module Nokogiri
                       "xmlns:foo" => "http://flavorjon.es/",
                       "xmlns:baz" => "http://flavorjon.es/",
                     },
-                    reparented.namespaces
+                    reparented.namespaces,
                   )
                 end
               end
@@ -558,7 +561,7 @@ module Nokogiri
                     "xmlns:foo" => "http://flavorjon.es/",
                     "xmlns:baz" => "http://tenderlovemaking.com/",
                   },
-                  reparented.namespaces
+                  reparented.namespaces,
                 )
               end
             end

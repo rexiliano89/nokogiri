@@ -17,7 +17,7 @@ native_write(VALUE self, VALUE _chunk, VALUE _last_chunk)
   int status = 0;
   libxmlStructuredErrorHandlerState handler_state;
 
-  Data_Get_Struct(self, xmlParserCtxt, ctx);
+  ctx = noko_xml_sax_push_parser_unwrap(self);
 
   if (Qnil != _chunk) {
     chunk = StringValuePtr(_chunk);
@@ -54,7 +54,7 @@ initialize_native(VALUE self, VALUE _xml_sax, VALUE _filename,
   htmlParserCtxtPtr ctx;
   xmlCharEncoding enc = XML_CHAR_ENCODING_NONE;
 
-  Data_Get_Struct(_xml_sax, xmlSAXHandler, sax);
+  sax = noko_sax_handler_unwrap(_xml_sax);
 
   if (_filename != Qnil) { filename = StringValueCStr(_filename); }
 
@@ -85,7 +85,7 @@ initialize_native(VALUE self, VALUE _xml_sax, VALUE _filename,
 }
 
 void
-noko_init_html_sax_push_parser()
+noko_init_html_sax_push_parser(void)
 {
   assert(cNokogiriXmlSaxPushParser);
   cNokogiriHtml4SaxPushParser = rb_define_class_under(mNokogiriHtml4Sax, "PushParser", cNokogiriXmlSaxPushParser);

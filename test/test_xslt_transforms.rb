@@ -201,23 +201,27 @@ module Nokogiri
           p3: 'x"x"x',
           p4: '"xxx"',
         }
-        result_doc = Nokogiri::XML.parse(style.apply_to(doc,
-          Nokogiri::XSLT.quote_params(params)))
+        result_doc = Nokogiri::XML.parse(style.apply_to(
+          doc,
+          Nokogiri::XSLT.quote_params(params),
+        ))
 
         assert_equal("func-result", result_doc.at("/root/function").content)
         assert_equal(3, result_doc.at("/root/max").content.to_i)
         if Nokogiri::VersionInfo.instance.libxslt_has_datetime?
           assert_match(
             /\d{4}-\d\d-\d\d([-|+]\d\d:\d\d)?/,
-            result_doc.at("/root/date").content
+            result_doc.at("/root/date").content,
           )
         end
         result_doc.xpath("/root/params/*").each do |p|
           assert_equal(p.content, params[p.name.intern])
         end
         check_params(result_doc, params)
-        result_doc = Nokogiri::XML.parse(style.apply_to(doc,
-          Nokogiri::XSLT.quote_params(params.to_a.flatten)))
+        result_doc = Nokogiri::XML.parse(style.apply_to(
+          doc,
+          Nokogiri::XSLT.quote_params(params.to_a.flatten),
+        ))
         check_params(result_doc, params)
       end
 
@@ -349,10 +353,71 @@ module Nokogiri
         exception = assert_raises(RuntimeError) do
           xslt.transform(doc)
         end
-        assert_match(
-          /xmlXPathCompOpEval: function decimal not found|java.lang.NoSuchMethodException.*decimal/,
-          exception.message,
-        )
+        if truffleruby_system_libraries?
+          assert_equal(
+            "xslt_generic_error_handler: xmlXPathCompOpEval: function %s not found\nxslt_generic_error_handler: %s",
+            exception.message,
+          )
+        else
+          assert_match(
+            /xmlXPathCompOpEval: function decimal not found|java.lang.NoSuchMethodException.*decimal/,
+            exception.message,
+          )
+        end
+      end
+
+      describe "https://github.com/sparklemotion/nokogiri/issues/2800" do
+        let(:doc) do
+          Nokogiri::XML::Document.parse(<<~XML)
+            <catalog>
+              <entry><title>abc</title></entry>
+              <entry><title>   </title></entry>
+              <entry><title>xyz</title></entry>
+            </catalog>
+          XML
+        end
+
+        let(:stylesheet) do
+          Nokogiri::XSLT.parse(<<~XSL)
+            <?xml version="1.0" encoding="UTF-8"?>
+            <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+              <xsl:strip-space elements="title" />
+              <xsl:template match="/">
+                <xsl:for-each select="catalog/entry">[<xsl:value-of select="title" />]</xsl:for-each>
+              </xsl:template>
+            </xsl:stylesheet>
+          XSL
+        end
+
+        it "should modify the original doc if no wrapped blank text nodes would be removed" do
+          # this is the default libxslt behavior
+          skip_unless_libxml2("libxslt bug is not present in JRuby")
+
+          result = stylesheet.transform(doc)
+
+          assert_includes(result.to_s, "[abc][][xyz]", "xsl:strip-space should work")
+          doc.at_css("entry:nth-child(2)").tap do |entry|
+            assert_equal(1, entry.children.length)
+            assert_equal("", entry.children.first.content, "original doc should be modified")
+          end
+        end
+
+        it "should not modify the original doc if wrapped blank text nodes would be removed" do
+          skip_unless_libxml2("libxslt bug is not present in JRuby")
+
+          # wrap the blank text node
+          assert(child = doc.css("title").children.find(&:blank?))
+
+          result = stylesheet.transform(doc)
+
+          assert(child.to_s) # raise a valgrind error if the fix isn't working
+
+          assert_includes(result.to_s, "[abc][][xyz]", "xsl:strip-space should work")
+          doc.at_css("entry:nth-child(2)").tap do |entry|
+            assert_equal(1, entry.children.length)
+            assert_equal("   ", entry.children.first.content, "original doc is unmodified")
+          end
+        end
       end
 
       describe "DEFAULT_XSLT parse options" do

@@ -2,18 +2,6 @@
 
 VALUE cNokogiriHtml4SaxParserContext ;
 
-static void
-deallocate(xmlParserCtxtPtr ctxt)
-{
-  NOKOGIRI_DEBUG_START(ctxt);
-
-  ctxt->sax = NULL;
-
-  htmlFreeParserCtxt(ctxt);
-
-  NOKOGIRI_DEBUG_END(ctxt);
-}
-
 static VALUE
 parse_memory(VALUE klass, VALUE data, VALUE encoding)
 {
@@ -43,7 +31,7 @@ parse_memory(VALUE klass, VALUE data, VALUE encoding)
     }
   }
 
-  return Data_Wrap_Struct(klass, NULL, deallocate, ctxt);
+  return noko_xml_sax_parser_context_wrap(klass, ctxt);
 }
 
 static VALUE
@@ -53,7 +41,7 @@ parse_file(VALUE klass, VALUE filename, VALUE encoding)
                              StringValueCStr(filename),
                              StringValueCStr(encoding)
                            );
-  return Data_Wrap_Struct(klass, NULL, deallocate, ctxt);
+  return noko_xml_sax_parser_context_wrap(klass, ctxt);
 }
 
 static VALUE
@@ -87,8 +75,8 @@ parse_with(VALUE self, VALUE sax_handler)
     rb_raise(rb_eArgError, "argument must be a Nokogiri::XML::SAX::Parser");
   }
 
-  Data_Get_Struct(self, htmlParserCtxt, ctxt);
-  Data_Get_Struct(sax_handler, htmlSAXHandler, sax);
+  ctxt = noko_xml_sax_parser_context_unwrap(self);
+  sax = noko_sax_handler_unwrap(sax_handler);
 
   /* Free the sax handler since we'll assign our own */
   if (ctxt->sax && ctxt->sax != (xmlSAXHandlerPtr)&xmlDefaultSAXHandler) {
@@ -107,7 +95,7 @@ parse_with(VALUE self, VALUE sax_handler)
 }
 
 void
-noko_init_html_sax_parser_context()
+noko_init_html_sax_parser_context(void)
 {
   assert(cNokogiriXmlSaxParserContext);
   cNokogiriHtml4SaxParserContext = rb_define_class_under(mNokogiriHtml4Sax, "ParserContext",

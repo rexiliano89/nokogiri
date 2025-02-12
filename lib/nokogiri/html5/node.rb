@@ -17,6 +17,9 @@
 #  limitations under the License.
 #
 
+#
+#  TODO: this whole file should go away. maybe make it a decorator?
+#
 require_relative "../xml/node"
 
 module Nokogiri
@@ -50,6 +53,8 @@ module Nokogiri
         config = XML::Node::SaveOptions.new(save_options.to_i)
         yield config if block_given?
 
+        encoding = encoding.is_a?(Encoding) ? encoding.name : encoding
+
         config_options = config.options
         if config_options & (XML::Node::SaveOptions::AS_XML | XML::Node::SaveOptions::AS_XHTML) != 0
           # Use Nokogiri's serializing code.
@@ -58,7 +63,7 @@ module Nokogiri
           # Serialize including the current node.
           html = html_standard_serialize(options[:preserve_newline] || false)
           encoding ||= document.encoding || Encoding::UTF_8
-          io << html.encode(encoding, fallback: lambda { |c| "&\#x#{c.ord.to_s(16)};" })
+          io << html.encode(encoding, fallback: lambda { |c| "&#x#{c.ord.to_s(16)};" })
         end
       end
 

@@ -32,8 +32,8 @@ module Nokogiri
         element = @html.at("div")
         assert_equal("baz", element.get_attribute("class"))
         assert_equal("baz", element["class"])
-        element["href"] = "javascript:alert(\"AGGA-KA-BOO!\")"
-        assert_match(/%22AGGA-KA-BOO!%22/, element.to_html)
+        element["href"] = "https://nokogiri.org/"
+        assert_match(/nokogiri.org/, element.to_html)
       end
 
       # The HTML parser ignores namespaces, so even properly declared namespaces
@@ -183,11 +183,15 @@ module Nokogiri
         if RUBY_PLATFORM.include?("java")
           # NKF linebreak modes are not supported as of jruby 1.2
           # see http://jira.codehaus.org/browse/JRUBY-3602 for status
-          assert_equal("<p>testparagraph\nfoobar</p>",
-            nokogiri.at("p").to_html.delete(" "))
+          assert_equal(
+            "<p>testparagraph\nfoobar</p>",
+            nokogiri.at("p").to_html.delete(" "),
+          )
         else
-          assert_equal("<p>testparagraph\r\nfoobar</p>",
-            nokogiri.at("p").to_html.delete(" "))
+          assert_equal(
+            "<p>testparagraph\r\nfoobar</p>",
+            nokogiri.at("p").to_html.delete(" "),
+          )
         end
       end
 

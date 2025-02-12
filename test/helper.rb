@@ -4,21 +4,19 @@
 # Some environment variables that are used to configure the test suite:
 # - NOKOGIRI_TEST_FAIL_FAST: if set to anything, emit test failure messages immediately upon failure
 # - NOKOGIRI_TEST_GC_LEVEL: (roughly in order of stress)
-#   - "normal" - normal GC functionality
+#   - "normal" - normal GC functionality (default)
 #   - "minor" - force a minor GC cycle after each test
-#   - "major" (default for Rubies without compaction) - force a major GC cycle after each test
-#   - "compact" (default for Rubies with compaction) - force a major GC after each test and GC compaction after every 20 tests
+#   - "major" - force a major GC cycle after each test
+#   - "compact" - force a major GC after each test and GC compaction after every 20 tests
 #   - "verify" - force a major GC after each test and verify references-after-compaction after every 20 tests
 #   - "stress" - run tests with GC.stress set to true
 # - NOKOGIRI_GC: read more in test/test_memory_leak.rb
 #
 
-# make sure we do one final major before the process exits (for valgrind)
-at_exit { GC.start(full_mark: true) } unless ::RUBY_PLATFORM == "java"
-
 require "simplecov"
 SimpleCov.start do
   add_filter "/test/"
+  enable_coverage :branch
 end
 
 $VERBOSE = true
@@ -119,32 +117,28 @@ module Nokogiri
     def skip_unless_jruby(msg = "this test should only run with jruby")
       skip(msg) unless Nokogiri.jruby?
     end
+
+    def truffleruby_system_libraries?
+      RUBY_ENGINE == "truffleruby" && !Nokogiri::PACKAGED_LIBRARIES
+    end
   end
 
   class TestBenchmark < Minitest::BenchSpec
     extend TestBase
   end
 
+  # rubocop:disable Style/ClassVars
   class TestCase < MiniTest::Spec
     include TestBase
 
     COMPACT_EVERY = 20
-    @@test_count = 0 # rubocop:disable Style/ClassVars
-    @@gc_level = nil # rubocop:disable Style/ClassVars
-
-    def self.upstream_xmlsoft?
-      ENV["CI_UPSTREAM_XMLSOFT"] || Nokogiri::LIBXML_LOADED_VERSION.include?("-GIT")
-    end
-
-    def upstream_xmlsoft?
-      self.class.upstream_xmlsoft?
-    end
+    @@test_count = 0
+    @@gc_level = nil
 
     def initialize_nokogiri_test_gc_level
       return if Nokogiri.jruby?
       return if @@gc_level
 
-      # rubocop:disable Style/ClassVars
       @@gc_level = if ["stress", "major", "minor", "normal"].include?(ENV["NOKOGIRI_TEST_GC_LEVEL"])
         ENV["NOKOGIRI_TEST_GC_LEVEL"]
       elsif (ENV["NOKOGIRI_TEST_GC_LEVEL"] == "compact") && defined?(GC.compact)
@@ -152,8 +146,9 @@ module Nokogiri
       elsif (ENV["NOKOGIRI_TEST_GC_LEVEL"] == "verify") && defined?(GC.verify_compaction_references)
         "verify"
       else
-        defined?(GC.compact) ? "compact" : "major"
+        "normal"
       end
+
       if ["compact", "verify"].include?(@@gc_level)
         # the only way of detecting an unsupported platform is actually
         # trying GC compaction
@@ -170,7 +165,7 @@ module Nokogiri
     def setup
       initialize_nokogiri_test_gc_level
 
-      @@test_count += 1 # rubocop:disable Style/ClassVars
+      @@test_count += 1
       if Nokogiri.uses_libxml?
         @fake_error_handler_called = false
         Nokogiri::Test.__foreign_error_handler do
@@ -203,7 +198,7 @@ module Nokogiri
         when "verify"
           if @@test_count % COMPACT_EVERY == 0
             # https://alanwu.space/post/check-compaction/
-            GC.verify_compaction_references(double_heap: true, toward: :empty)
+            gc_verify_compaction_references
           end
           GC.start(full_mark: true)
         when "stress"
@@ -216,6 +211,14 @@ module Nokogiri
       end
 
       super
+    end
+
+    def gc_verify_compaction_references
+      if Gem::Requirement.new(">= 3.2.0").satisfied_by?(Gem::Version.new(RUBY_VERSION))
+        GC.verify_compaction_references(expand_heap: true, toward: :empty)
+      else
+        GC.verify_compaction_references(double_heap: true, toward: :empty)
+      end
     end
 
     def stress_memory_while(&block)
@@ -281,6 +284,7 @@ module Nokogiri
       pending(msg, &block)
     end
   end
+  # rubocop:enable Style/ClassVars
 
   module SAX
     class TestCase < Nokogiri::TestCase
@@ -383,12 +387,18 @@ module Nokogiri
 
         [
           :xmldecl,
-          :start_document, :end_document,
-          :start_element, :end_element,
-          :start_element_namespace, :end_element_namespace,
-          :characters, :comment, :cdata_block,
+          :start_document,
+          :end_document,
+          :start_element,
+          :end_element,
+          :start_element_namespace,
+          :end_element_namespace,
+          :characters,
+          :comment,
+          :cdata_block,
           :processing_instruction,
-          :error, :warning,
+          :error,
+          :warning,
         ].each do |name|
           define_method name do |*arguments|
             @items << [name, *arguments]

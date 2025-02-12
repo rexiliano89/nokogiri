@@ -30,7 +30,7 @@ new (int argc, VALUE *argv, VALUE klass)
     rb_raise(rb_eArgError, "first argument must be a XML::Document or XML::Node");
   }
 
-  Data_Get_Struct(document, xmlDoc, xml_doc);
+  xml_doc = noko_xml_document_unwrap(document);
 
   node = xmlNewDocComment(
            xml_doc,
@@ -48,7 +48,7 @@ new (int argc, VALUE *argv, VALUE klass)
 }
 
 void
-noko_init_xml_comment()
+noko_init_xml_comment(void)
 {
   assert(cNokogiriXmlCharacterData);
   /*

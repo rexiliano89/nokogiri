@@ -51,8 +51,9 @@ remove_private(xmlNodePtr node)
 }
 
 static void
-mark(xmlDocPtr doc)
+mark(void *data)
 {
+  xmlDocPtr doc = (xmlDocPtr)data;
   nokogiriTuplePtr tuple = (nokogiriTuplePtr)doc->_private;
   if (tuple) {
     rb_gc_mark(tuple->doc);
@@ -61,11 +62,10 @@ mark(xmlDocPtr doc)
 }
 
 static void
-dealloc(xmlDocPtr doc)
+dealloc(void *data)
 {
+  xmlDocPtr doc = (xmlDocPtr)data;
   st_table *node_hash;
-
-  NOKOGIRI_DEBUG_START(doc);
 
   node_hash  = DOC_UNLINKED_NODE_HASH(doc);
 
@@ -84,9 +84,47 @@ dealloc(xmlDocPtr doc)
   }
 
   xmlFreeDoc(doc);
-
-  NOKOGIRI_DEBUG_END(doc);
 }
+
+static size_t
+memsize_node(const xmlNodePtr node)
+{
+  /* note we don't count namespace definitions, just going for a good-enough number here */
+  xmlNodePtr child;
+  size_t memsize = 0;
+
+  memsize += xmlStrlen(node->name);
+  for (child = (xmlNodePtr)node->properties; child; child = child->next) {
+    memsize += sizeof(xmlAttr) + memsize_node(child);
+  }
+  if (node->type == XML_TEXT_NODE) {
+    memsize += xmlStrlen(node->content);
+  }
+  for (child = node->children; child; child = child->next) {
+    memsize += sizeof(xmlNode) + memsize_node(child);
+  }
+  return memsize;
+}
+
+static size_t
+memsize(const void *data)
+{
+  xmlDocPtr doc = (const xmlDocPtr)data;
+  size_t memsize = sizeof(xmlDoc);
+  /* This may not account for all memory use */
+  memsize += memsize_node((xmlNodePtr)doc);
+  return memsize;
+}
+
+static const rb_data_type_t noko_xml_document_data_type = {
+  .wrap_struct_name = "Nokogiri::XML::Document",
+  .function = {
+    .dmark = mark,
+    .dfree = dealloc,
+    .dsize = memsize,
+  },
+  // .flags = RUBY_TYPED_FREE_IMMEDIATELY, // TODO see https://github.com/sparklemotion/nokogiri/issues/2822
+};
 
 static void
 recursively_remove_namespaces_from_node(xmlNodePtr node)
@@ -104,7 +142,11 @@ recursively_remove_namespaces_from_node(xmlNodePtr node)
        (node->type == XML_XINCLUDE_START) ||
        (node->type == XML_XINCLUDE_END)) &&
       node->nsDef) {
-    xmlFreeNsList(node->nsDef);
+    xmlNsPtr curr = node->nsDef;
+    while (curr) {
+      noko_xml_document_pin_namespace(curr, node->doc);
+      curr = curr->next;
+    }
     node->nsDef = NULL;
   }
 
@@ -126,8 +168,7 @@ recursively_remove_namespaces_from_node(xmlNodePtr node)
 static VALUE
 url(VALUE self)
 {
-  xmlDocPtr doc;
-  Data_Get_Struct(self, xmlDoc, doc);
+  xmlDocPtr doc = noko_xml_document_unwrap(self);
 
   if (doc->URL) { return NOKOGIRI_STR_NEW2(doc->URL); }
 
@@ -146,7 +187,7 @@ rb_xml_document_root_set(VALUE self, VALUE rb_new_root)
   xmlDocPtr c_document;
   xmlNodePtr c_new_root = NULL, c_current_root;
 
-  Data_Get_Struct(self, xmlDoc, c_document);
+  c_document = noko_xml_document_unwrap(self);
 
   c_current_root = xmlDocGetRootElement(c_document);
   if (c_current_root) {
@@ -190,7 +231,7 @@ rb_xml_document_root(VALUE self)
   xmlDocPtr c_document;
   xmlNodePtr c_root;
 
-  Data_Get_Struct(self, xmlDoc, c_document);
+  c_document = noko_xml_document_unwrap(self);
 
   c_root = xmlDocGetRootElement(c_document);
   if (!c_root) {
@@ -209,8 +250,7 @@ rb_xml_document_root(VALUE self)
 static VALUE
 set_encoding(VALUE self, VALUE encoding)
 {
-  xmlDocPtr doc;
-  Data_Get_Struct(self, xmlDoc, doc);
+  xmlDocPtr doc = noko_xml_document_unwrap(self);
 
   if (doc->encoding) {
     xmlFree(DISCARD_CONST_QUAL_XMLCHAR(doc->encoding));
@@ -230,8 +270,7 @@ set_encoding(VALUE self, VALUE encoding)
 static VALUE
 encoding(VALUE self)
 {
-  xmlDocPtr doc;
-  Data_Get_Struct(self, xmlDoc, doc);
+  xmlDocPtr doc = noko_xml_document_unwrap(self);
 
   if (!doc->encoding) { return Qnil; }
   return NOKOGIRI_STR_NEW2(doc->encoding);
@@ -246,8 +285,7 @@ encoding(VALUE self)
 static VALUE
 version(VALUE self)
 {
-  xmlDocPtr doc;
-  Data_Get_Struct(self, xmlDoc, doc);
+  xmlDocPtr doc = noko_xml_document_unwrap(self);
 
   if (!doc->version) { return Qnil; }
   return NOKOGIRI_STR_NEW2(doc->version);
@@ -394,7 +432,7 @@ duplicate_document(int argc, VALUE *argv, VALUE self)
     level = INT2NUM((long)1);
   }
 
-  Data_Get_Struct(self, xmlDoc, doc);
+  doc = noko_xml_document_unwrap(self);
 
   dup = xmlCopyDoc(doc, (int)NUM2INT(level));
 
@@ -467,8 +505,7 @@ new (int argc, VALUE *argv, VALUE klass)
 static VALUE
 remove_namespaces_bang(VALUE self)
 {
-  xmlDocPtr doc ;
-  Data_Get_Struct(self, xmlDoc, doc);
+  xmlDocPtr doc = noko_xml_document_unwrap(self);
 
   recursively_remove_namespaces_from_node((xmlNodePtr)doc);
   return self;
@@ -496,7 +533,7 @@ create_entity(int argc, VALUE *argv, VALUE self)
   xmlEntityPtr ptr;
   xmlDocPtr doc ;
 
-  Data_Get_Struct(self, xmlDoc, doc);
+  doc = noko_xml_document_unwrap(self);
 
   rb_scan_args(argc, argv, "14", &name, &type, &external_id, &system_id,
                &content);
@@ -584,7 +621,7 @@ rb_xml_document_canonicalize(int argc, VALUE *argv, VALUE self)
     }
   }
 
-  Data_Get_Struct(self, xmlDoc, c_doc);
+  c_doc = noko_xml_document_unwrap(self);
 
   rb_cStringIO = rb_const_get_at(rb_cObject, rb_intern("StringIO"));
   rb_io = rb_class_new_instance(0, 0, rb_cStringIO);
@@ -632,7 +669,7 @@ noko_xml_document_wrap_with_init_args(VALUE klass, xmlDocPtr c_document, int arg
     klass = cNokogiriXmlDocument;
   }
 
-  rb_document = Data_Wrap_Struct(klass, mark, dealloc, c_document);
+  rb_document = TypedData_Wrap_Struct(klass, &noko_xml_document_data_type, c_document);
 
   tuple = (nokogiriTuplePtr)ruby_xmalloc(sizeof(nokogiriTuple));
   tuple->doc = rb_document;
@@ -665,6 +702,40 @@ noko_xml_document_wrap(VALUE klass, xmlDocPtr doc)
   return noko_xml_document_wrap_with_init_args(klass, doc, 0, NULL);
 }
 
+xmlDocPtr
+noko_xml_document_unwrap(VALUE rb_document)
+{
+  xmlDocPtr c_document;
+  TypedData_Get_Struct(rb_document, xmlDoc, &noko_xml_document_data_type, c_document);
+  return c_document;
+}
+
+/* Schema creation will remove and deallocate "blank" nodes.
+ * If those blank nodes have been exposed to Ruby, they could get freed
+ * out from under the VALUE pointer.  This function checks to see if any of
+ * those nodes have been exposed to Ruby, and if so we should raise an exception.
+ */
+int
+noko_xml_document_has_wrapped_blank_nodes_p(xmlDocPtr c_document)
+{
+  VALUE cache = DOC_NODE_CACHE(c_document);
+
+  if (NIL_P(cache)) {
+    return 0;
+  }
+
+  for (long jnode = 0; jnode < RARRAY_LEN(cache); jnode++) {
+    xmlNodePtr node;
+    VALUE element = rb_ary_entry(cache, jnode);
+
+    Noko_Node_Get_Struct(element, xmlNode, node);
+    if (xmlIsBlankNode(node)) {
+      return 1;
+    }
+  }
+
+  return 0;
+}
 
 void
 noko_xml_document_pin_node(xmlNodePtr node)
@@ -689,7 +760,7 @@ noko_xml_document_pin_namespace(xmlNsPtr ns, xmlDocPtr doc)
 
 
 void
-noko_init_xml_document()
+noko_init_xml_document(void)
 {
   assert(cNokogiriXmlNode);
   /*

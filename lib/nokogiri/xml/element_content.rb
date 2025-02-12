@@ -11,9 +11,11 @@ module Nokogiri
     #   ]>
     #   </root>
     #
-    # ElementContent represents the tree inside the <!ELEMENT> tag shown above
-    # that lists the possible content for the div1 tag.
+    # ElementContent represents the binary tree inside the <!ELEMENT> tag shown above that lists the
+    # possible content for the div1 tag.
     class ElementContent
+      include Nokogiri::XML::PP::Node
+
       # Possible definitions of type
       PCDATA  = 1
       ELEMENT = 2
@@ -32,6 +34,12 @@ module Nokogiri
       # Get the children of this ElementContent node
       def children
         [c1, c2].compact
+      end
+
+      private
+
+      def inspect_attributes
+        [:prefix, :name, :type, :occur, :children]
       end
     end
   end

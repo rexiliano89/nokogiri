@@ -137,9 +137,12 @@ module Nokogiri
 
       ###
       # Add +node_or_tags+ as a child of this Node.
-      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a string containing markup.
       #
-      # Returns the reparented node (if +node_or_tags+ is a Node), or NodeSet (if +node_or_tags+ is a DocumentFragment, NodeSet, or string).
+      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a String
+      # containing markup.
+      #
+      # Returns the reparented node (if +node_or_tags+ is a Node), or NodeSet (if +node_or_tags+ is
+      # a DocumentFragment, NodeSet, or String).
       #
       # Also see related method +<<+.
       def add_child(node_or_tags)
@@ -154,9 +157,12 @@ module Nokogiri
 
       ###
       # Add +node_or_tags+ as the first child of this Node.
-      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a string containing markup.
       #
-      # Returns the reparented node (if +node_or_tags+ is a Node), or NodeSet (if +node_or_tags+ is a DocumentFragment, NodeSet, or string).
+      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a String
+      # containing markup.
+      #
+      # Returns the reparented node (if +node_or_tags+ is a Node), or NodeSet (if +node_or_tags+ is
+      # a DocumentFragment, NodeSet, or String).
       #
       # Also see related method +add_child+.
       def prepend_child(node_or_tags)
@@ -170,22 +176,81 @@ module Nokogiri
         end
       end
 
-      ###
-      # Add html around this node
+      # :call-seq:
+      #   wrap(markup) -> self
+      #   wrap(node) -> self
       #
-      # Returns self
-      def wrap(html)
-        new_parent = document.parse(html).first
-        add_next_sibling(new_parent)
+      # Wrap this Node with the node parsed from +markup+ or a dup of the +node+.
+      #
+      # [Parameters]
+      # - *markup* (String)
+      #   Markup that is parsed and used as the wrapper. This node's parent, if it exists, is used
+      #   as the context node for parsing; otherwise the associated document is used. If the parsed
+      #   fragment has multiple roots, the first root node is used as the wrapper.
+      # - *node* (Nokogiri::XML::Node)
+      #   An element that is `#dup`ed and used as the wrapper.
+      #
+      # [Returns] +self+, to support chaining.
+      #
+      # Also see NodeSet#wrap
+      #
+      # *Example* with a +String+ argument:
+      #
+      #   doc = Nokogiri::HTML5(<<~HTML)
+      #     <html><body>
+      #       <a>asdf</a>
+      #     </body></html>
+      #   HTML
+      #   doc.at_css("a").wrap("<div></div>")
+      #   doc.to_html
+      #   # => <html><head></head><body>
+      #   #      <div><a>asdf</a></div>
+      #   #    </body></html>
+      #
+      # *Example* with a +Node+ argument:
+      #
+      #   doc = Nokogiri::HTML5(<<~HTML)
+      #     <html><body>
+      #       <a>asdf</a>
+      #     </body></html>
+      #   HTML
+      #   doc.at_css("a").wrap(doc.create_element("div"))
+      #   doc.to_html
+      #   # <html><head></head><body>
+      #   #   <div><a>asdf</a></div>
+      #   # </body></html>
+      #
+      def wrap(node_or_tags)
+        case node_or_tags
+        when String
+          context_node = parent || document
+          new_parent = context_node.coerce(node_or_tags).first
+          if new_parent.nil?
+            raise "Failed to parse '#{node_or_tags}' in the context of a '#{context_node.name}' element"
+          end
+        when XML::Node
+          new_parent = node_or_tags.dup
+        else
+          raise ArgumentError, "Requires a String or Node argument, and cannot accept a #{node_or_tags.class}"
+        end
+
+        if parent
+          add_next_sibling(new_parent)
+        else
+          new_parent.unlink
+        end
         new_parent.add_child(self)
+
         self
       end
 
       ###
       # Add +node_or_tags+ as a child of this Node.
-      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a string containing markup.
       #
-      # Returns self, to support chaining of calls (e.g., root << child1 << child2)
+      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a String
+      # containing markup.
+      #
+      # Returns +self+, to support chaining of calls (e.g., root << child1 << child2)
       #
       # Also see related method +add_child+.
       def <<(node_or_tags)
@@ -195,9 +260,12 @@ module Nokogiri
 
       ###
       # Insert +node_or_tags+ before this Node (as a sibling).
-      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a string containing markup.
       #
-      # Returns the reparented node (if +node_or_tags+ is a Node), or NodeSet (if +node_or_tags+ is a DocumentFragment, NodeSet, or string).
+      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a String
+      # containing markup.
+      #
+      # Returns the reparented node (if +node_or_tags+ is a Node), or NodeSet (if +node_or_tags+ is
+      # a DocumentFragment, NodeSet, or String).
       #
       # Also see related method +before+.
       def add_previous_sibling(node_or_tags)
@@ -209,9 +277,12 @@ module Nokogiri
 
       ###
       # Insert +node_or_tags+ after this Node (as a sibling).
-      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a string containing markup.
       #
-      # Returns the reparented node (if +node_or_tags+ is a Node), or NodeSet (if +node_or_tags+ is a DocumentFragment, NodeSet, or string).
+      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a String
+      # containing markup.
+      #
+      # Returns the reparented node (if +node_or_tags+ is a Node), or NodeSet (if +node_or_tags+ is
+      # a DocumentFragment, NodeSet, or String).
       #
       # Also see related method +after+.
       def add_next_sibling(node_or_tags)
@@ -223,9 +294,11 @@ module Nokogiri
 
       ####
       # Insert +node_or_tags+ before this node (as a sibling).
-      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a string containing markup.
       #
-      # Returns self, to support chaining of calls.
+      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a String
+      # containing markup.
+      #
+      # Returns +self+, to support chaining of calls.
       #
       # Also see related method +add_previous_sibling+.
       def before(node_or_tags)
@@ -235,9 +308,11 @@ module Nokogiri
 
       ####
       # Insert +node_or_tags+ after this node (as a sibling).
-      # +node_or_tags+ can be a Nokogiri::XML::Node, a Nokogiri::XML::DocumentFragment, or a string containing markup.
       #
-      # Returns self, to support chaining of calls.
+      # +node_or_tags+ can be a Nokogiri::XML::Node, a Nokogiri::XML::DocumentFragment, or a String
+      # containing markup.
+      #
+      # Returns +self+, to support chaining of calls.
       #
       # Also see related method +add_next_sibling+.
       def after(node_or_tags)
@@ -246,8 +321,18 @@ module Nokogiri
       end
 
       ####
-      # Set the inner html for this Node to +node_or_tags+
-      # +node_or_tags+ can be a Nokogiri::XML::Node, a Nokogiri::XML::DocumentFragment, or a string containing markup.
+      # Set the content for this Node to +node_or_tags+.
+      #
+      # +node_or_tags+ can be a Nokogiri::XML::Node, a Nokogiri::XML::DocumentFragment, or a String
+      # containing markup.
+      #
+      # ⚠ Please note that despite the name, this method will *not* always parse a String argument
+      # as HTML. A String argument will be parsed with the +DocumentFragment+ parser related to this
+      # node's document.
+      #
+      # For example, if the document is an HTML4::Document then the string will be parsed as HTML4
+      # using HTML4::DocumentFragment; but if the document is an XML::Document then it will
+      # parse the string as XML using XML::DocumentFragment.
       #
       # Also see related method +children=+
       def inner_html=(node_or_tags)
@@ -255,8 +340,10 @@ module Nokogiri
       end
 
       ####
-      # Set the inner html for this Node +node_or_tags+
-      # +node_or_tags+ can be a Nokogiri::XML::Node, a Nokogiri::XML::DocumentFragment, or a string containing markup.
+      # Set the content for this Node +node_or_tags+
+      #
+      # +node_or_tags+ can be a Nokogiri::XML::Node, a Nokogiri::XML::DocumentFragment, or a String
+      # containing markup.
       #
       # Also see related method +inner_html=+
       def children=(node_or_tags)
@@ -271,9 +358,12 @@ module Nokogiri
 
       ####
       # Replace this Node with +node_or_tags+.
-      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a string containing markup.
       #
-      # Returns the reparented node (if +node_or_tags+ is a Node), or NodeSet (if +node_or_tags+ is a DocumentFragment, NodeSet, or string).
+      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a String
+      # containing markup.
+      #
+      # Returns the reparented node (if +node_or_tags+ is a Node), or NodeSet (if +node_or_tags+ is
+      # a DocumentFragment, NodeSet, or String).
       #
       # Also see related method +swap+.
       def replace(node_or_tags)
@@ -303,7 +393,9 @@ module Nokogiri
 
       ####
       # Swap this Node for +node_or_tags+
-      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a string containing markup.
+      #
+      # +node_or_tags+ can be a Nokogiri::XML::Node, a ::DocumentFragment, a ::NodeSet, or a String
+      # Containing markup.
       #
       # Returns self, to support chaining of calls.
       #
@@ -314,7 +406,8 @@ module Nokogiri
       end
 
       ####
-      # Set the Node's content to a Text node containing +string+. The string gets XML escaped, not interpreted as markup.
+      # Set the Node's content to a Text node containing +string+. The string gets XML escaped, not
+      # interpreted as markup.
       def content=(string)
         self.native_content = encode_special_chars(string.to_s)
       end
@@ -1105,9 +1198,9 @@ module Nokogiri
 
       # Get the path to this node as a CSS expression
       def css_path
-        path.split(%r{/}).map do |part|
+        path.split(%r{/}).filter_map do |part|
           part.empty? ? nil : part.gsub(/\[(\d+)\]/, ':nth-of-type(\1)')
-        end.compact.join(" > ")
+        end.join(" > ")
       end
 
       ###
@@ -1176,11 +1269,11 @@ module Nokogiri
       #
       # These two statements are equivalent:
       #
-      #  node.serialize(:encoding => 'UTF-8', :save_with => FORMAT | AS_XML)
+      #   node.serialize(encoding: 'UTF-8', save_with: FORMAT | AS_XML)
       #
       # or
       #
-      #   node.serialize(:encoding => 'UTF-8') do |config|
+      #   node.serialize(encoding: 'UTF-8') do |config|
       #     config.format.as_xml
       #   end
       #
@@ -1217,7 +1310,7 @@ module Nokogiri
       ###
       # Serialize this Node to XML using +options+
       #
-      #   doc.to_xml(:indent => 5, :encoding => 'UTF-8')
+      #   doc.to_xml(indent: 5, encoding: 'UTF-8')
       #
       # See Node#write_to for a list of +options+
       def to_xml(options = {})
@@ -1228,7 +1321,7 @@ module Nokogiri
       ###
       # Serialize this Node to XHTML using +options+
       #
-      #   doc.to_xhtml(:indent => 5, :encoding => 'UTF-8')
+      #   doc.to_xhtml(indent: 5, encoding: 'UTF-8')
       #
       # See Node#write_to for a list of +options+
       def to_xhtml(options = {})
@@ -1236,25 +1329,32 @@ module Nokogiri
       end
 
       ###
-      # Write Node to +io+ with +options+. +options+ modify the output of
-      # this method.  Valid options are:
+      # :call-seq:
+      #   write_to(io, *options)
       #
-      # * +:encoding+ for changing the encoding
-      # * +:indent_text+ the indentation text, defaults to one space
-      # * +:indent+ the number of +:indent_text+ to use, defaults to 2
-      # * +:save_with+ a combination of SaveOptions constants.
+      # Serialize this node or document to +io+.
+      #
+      # [Parameters]
+      # - +io+ (IO) An IO-like object to which the serialized content will be written.
+      # - +options+ (Hash) See below
+      #
+      # [Options]
+      # * +:encoding+ (String or Encoding) specify the encoding of the output (defaults to document encoding)
+      # * +:indent_text+ (String) the indentation text (defaults to <code>" "</code>)
+      # * +:indent+ (Integer) the number of +:indent_text+ to use (defaults to +2+)
+      # * +:save_with+ (Integer) a combination of SaveOptions constants
       #
       # To save with UTF-8 indented twice:
       #
-      #   node.write_to(io, :encoding => 'UTF-8', :indent => 2)
+      #   node.write_to(io, encoding: 'UTF-8', indent: 2)
       #
       # To save indented with two dashes:
       #
-      #   node.write_to(io, :indent_text => '-', :indent => 2)
+      #   node.write_to(io, indent_text: '-', indent: 2)
       #
       def write_to(io, *options)
         options = options.first.is_a?(Hash) ? options.shift : {}
-        encoding = options[:encoding] || options[0]
+        encoding = options[:encoding] || options[0] || document.encoding
         if Nokogiri.jruby?
           save_options = options[:save_with] || options[1]
           indent_times = options[:indent] || 0
@@ -1271,6 +1371,8 @@ module Nokogiri
 
         config = SaveOptions.new(save_options.to_i)
         yield config if block_given?
+
+        encoding = encoding.is_a?(Encoding) ? encoding.name : encoding
 
         native_write_to(io, encoding, indentation, config.options)
       end
@@ -1307,6 +1409,69 @@ module Nokogiri
         document.canonicalize(mode, inclusive_namespaces, with_comments) do |node, parent|
           tn = node.is_a?(XML::Node) ? node : parent
           tn == c14n_root || tn.ancestors.include?(c14n_root)
+        end
+      end
+
+      DECONSTRUCT_KEYS = [:name, :attributes, :children, :namespace, :content, :elements, :inner_html].freeze # :nodoc:
+      DECONSTRUCT_METHODS = { attributes: :attribute_nodes }.freeze # :nodoc:
+
+      #
+      #  :call-seq: deconstruct_keys(array_of_names) → Hash
+      #
+      #  Returns a hash describing the Node, to use in pattern matching.
+      #
+      #  Valid keys and their values:
+      #  - +name+ → (String) The name of this node, or "text" if it is a Text node.
+      #  - +namespace+ → (Namespace, nil) The namespace of this node, or nil if there is no namespace.
+      #  - +attributes+ → (Array<Attr>) The attributes of this node.
+      #  - +children+ → (Array<Node>) The children of this node. 💡 Note this includes text nodes.
+      #  - +elements+ → (Array<Node>) The child elements of this node. 💡 Note this does not include text nodes.
+      #  - +content+ → (String) The contents of all the text nodes in this node's subtree. See #content.
+      #  - +inner_html+ → (String) The inner markup for the children of this node. See #inner_html.
+      #
+      #  ⚡ This is an experimental feature, available since v1.14.0
+      #
+      #  *Example*
+      #
+      #    doc = Nokogiri::XML.parse(<<~XML)
+      #      <?xml version="1.0"?>
+      #      <parent xmlns="http://nokogiri.org/ns/default" xmlns:noko="http://nokogiri.org/ns/noko">
+      #        <child1 foo="abc" noko:bar="def">First</child1>
+      #        <noko:child2 foo="qwe" noko:bar="rty">Second</noko:child2>
+      #      </parent>
+      #    XML
+      #
+      #    doc.root.deconstruct_keys([:name, :namespace])
+      #    # => {:name=>"parent",
+      #    #     :namespace=>
+      #    #      #(Namespace:0x35c { href = "http://nokogiri.org/ns/default" })}
+      #
+      #    doc.root.deconstruct_keys([:inner_html, :content])
+      #    # => {:content=>"\n" + "  First\n" + "  Second\n",
+      #    #     :inner_html=>
+      #    #      "\n" +
+      #    #      "  <child1 foo=\"abc\" noko:bar=\"def\">First</child1>\n" +
+      #    #      "  <noko:child2 foo=\"qwe\" noko:bar=\"rty\">Second</noko:child2>\n"}
+      #
+      #    doc.root.elements.first.deconstruct_keys([:attributes])
+      #    # => {:attributes=>
+      #    #      [#(Attr:0x370 { name = "foo", value = "abc" }),
+      #    #       #(Attr:0x384 {
+      #    #         name = "bar",
+      #    #         namespace = #(Namespace:0x398 {
+      #    #           prefix = "noko",
+      #    #           href = "http://nokogiri.org/ns/noko"
+      #    #           }),
+      #    #         value = "def"
+      #    #         })]}
+      #
+      def deconstruct_keys(keys)
+        requested_keys = DECONSTRUCT_KEYS & keys
+        {}.tap do |values|
+          requested_keys.each do |key|
+            method = DECONSTRUCT_METHODS[key] || key
+            values[key] = send(method)
+          end
         end
       end
 

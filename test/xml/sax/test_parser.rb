@@ -161,7 +161,7 @@ module Nokogiri
           EOF
           assert_equal(
             ["root", "foo:f", "bar"],
-            parser.document.start_elements.map(&:first)
+            parser.document.start_elements.map(&:first),
           )
         end
 
@@ -337,7 +337,7 @@ module Nokogiri
           EOF
           assert_equal(
             [["p", [["xmlns:foo", "http://foo.example.com/"]]]],
-            parser.document.start_elements
+            parser.document.start_elements,
           )
         end
 
@@ -348,7 +348,7 @@ module Nokogiri
           EOF
           assert_equal(
             [["xml-stylesheet", 'href="a.xsl" type="text/xsl"']],
-            parser.document.processing_instructions
+            parser.document.processing_instructions,
           )
         end
 
@@ -393,7 +393,7 @@ module Nokogiri
 
           assert_equal(
             [["Root", []], ["Data", []], ["Item", []], ["Data", []], ["Item", []]],
-            parser.document.start_elements
+            parser.document.start_elements,
           )
         end
 
@@ -410,7 +410,7 @@ module Nokogiri
         end
 
         it :test_large_cdata_is_handled do
-          skip("see #2132 and https://gitlab.gnome.org/GNOME/libxml2/-/issues/200") if Nokogiri.uses_libxml?("<=2.9.10")
+          skip("see #2132 and https://gitlab.gnome.org/GNOME/libxml2/-/issues/200") if Nokogiri::VersionInfo.instance.libxml2_using_system?
 
           template = <<~EOF
             <?xml version="1.0" encoding="UTF-8"?>
@@ -437,7 +437,12 @@ module Nokogiri
           parser = Nokogiri::XML::SAX::Parser.new(handler)
           parser.parse(xml)
 
-          assert_predicate(handler.errors, :empty?)
+          if Nokogiri.uses_libxml?(">=2.10.3")
+            # CVE-2022-40303 https://gitlab.gnome.org/GNOME/libxml2/-/commit/c846986
+            assert_match(/CData section too big/, handler.errors.first)
+          else
+            assert_predicate(handler.errors, :empty?)
+          end
         end
 
         it "does not resolve entities by default" do
@@ -484,7 +489,11 @@ module Nokogiri
           XML
           parser.parse(xml)
           refute_empty(parser.document.warnings)
-          assert_match(/URI .* is not absolute/, parser.document.warnings.first)
+          if truffleruby_system_libraries?
+            assert_equal("warning_func: %s", parser.document.warnings.first)
+          else
+            assert_match(/URI .* is not absolute/, parser.document.warnings.first)
+          end
         end
       end
     end

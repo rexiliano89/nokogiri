@@ -28,8 +28,15 @@ module Nokogiri
       attr_accessor :document
       attr_accessor :errors
 
+      # Get the parser's quirks mode value. See HTML5::QuirksMode.
+      #
+      # This method returns `nil` if the parser was not invoked (e.g., `Nokogiri::HTML5::DocumentFragment.new(doc)`).
+      #
+      # Since v1.14.0
+      attr_reader :quirks_mode
+
       # Create a document fragment.
-      def initialize(doc, tags = nil, ctx = nil, options = {})
+      def initialize(doc, tags = nil, ctx = nil, options = {}) # rubocop:disable Lint/MissingSuper
         self.document = doc
         self.errors = []
         return self unless tags
@@ -44,7 +51,7 @@ module Nokogiri
       def serialize(options = {}, &block) # :nodoc:
         # Bypass XML::Document.serialize which doesn't support options even
         # though XML::Node.serialize does!
-        XML::Node.instance_method(:serialize).bind(self).call(options, &block)
+        XML::Node.instance_method(:serialize).bind_call(self, options, &block)
       end
 
       # Parse a document fragment from +tags+, returning a Nodeset.

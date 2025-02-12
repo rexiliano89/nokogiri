@@ -333,7 +333,7 @@ module Nokogiri
           temp_html_file.open
           assert_equal(
             Nokogiri::HTML4.parse(File.read(HTML_FILE)).xpath("//div/a").length,
-            Nokogiri::HTML4.parse(temp_html_file).xpath("//div/a").length
+            Nokogiri::HTML4.parse(temp_html_file).xpath("//div/a").length,
           )
         end
 
@@ -437,7 +437,7 @@ module Nokogiri
           assert_equal("http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd", html.internal_subset.system_id)
           assert_equal(
             "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\">",
-            html.to_s[0, 97]
+            html.to_s[0, 97],
           )
         end
 
@@ -755,6 +755,29 @@ module Nokogiri
           assert_equal(expected, doc.at_css("body").children.map(&:type))
         end
 
+        it "emits HTML even when no save options are specified" do
+          doc = Nokogiri::HTML4::Document.parse("<html><body><div>hello</div></body></html>")
+          expected = doc.to_html
+
+          assert_equal(
+            expected,
+            doc.write_to(StringIO.new, save_with: Nokogiri::XML::Node::SaveOptions::DEFAULT_HTML).tap(&:rewind).read,
+          )
+          assert_equal(
+            expected,
+            doc.write_to(StringIO.new).tap(&:rewind).read,
+          )
+
+          # but not when the AS_XML or AS_XHTML flag is set
+          as_xml = doc.write_to(StringIO.new, save_with: Nokogiri::XML::Node::SaveOptions::AS_XML).tap(&:rewind).read
+          refute_equal(expected, as_xml)
+          assert(as_xml.start_with?("<?xml"))
+
+          as_xhtml = doc.write_to(StringIO.new, save_with: Nokogiri::XML::Node::SaveOptions::AS_XHTML).tap(&:rewind).read
+          refute_equal(expected, as_xhtml)
+          assert(as_xhtml.start_with?("<?xml"))
+        end
+
         describe ".parse" do
           let(:html_strict) do
             Nokogiri::XML::ParseOptions.new(Nokogiri::XML::ParseOptions::DEFAULT_HTML).norecover
@@ -772,7 +795,7 @@ module Nokogiri
               doc = Nokogiri::HTML4.parse(input)
               body = doc.at_xpath("//body")
 
-              if Nokogiri.uses_libxml?("= 2.9.13") && !upstream_xmlsoft?
+              if Nokogiri.uses_libxml?("= 2.9.13")
                 # <body><div>this <div>second element</div></div></body>
                 assert_equal(1, body.children.length)
                 body.children.first.tap do |div|
@@ -865,7 +888,7 @@ module Nokogiri
               doc = klass.new("http://www.w3.org/TR/REC-html40/loose.dtd", "-//W3C//DTD HTML 4.0 Transitional//EN")
               assert_equal(
                 ["http://www.w3.org/TR/REC-html40/loose.dtd", "-//W3C//DTD HTML 4.0 Transitional//EN"],
-                doc.initialized_with
+                doc.initialized_with,
               )
             end
           end

@@ -203,10 +203,16 @@ warning_func(void *ctx, const char *msg, ...)
   VALUE doc = rb_iv_get(self, "@document");
   VALUE rb_message;
 
+#ifdef TRUFFLERUBY_NOKOGIRI_SYSTEM_LIBRARIES
+  /* It is not currently possible to pass var args from native
+     functions to sulong, so we work around the issue here. */
+  rb_message = rb_sprintf("warning_func: %s", msg);
+#else
   va_list args;
   va_start(args, msg);
   rb_message = rb_vsprintf(msg, args);
   va_end(args);
+#endif
 
   rb_funcall(doc, id_warning, 1, rb_message);
 }
@@ -219,10 +225,16 @@ error_func(void *ctx, const char *msg, ...)
   VALUE doc = rb_iv_get(self, "@document");
   VALUE rb_message;
 
+#ifdef TRUFFLERUBY_NOKOGIRI_SYSTEM_LIBRARIES
+  /* It is not currently possible to pass var args from native
+     functions to sulong, so we work around the issue here. */
+  rb_message = rb_sprintf("error_func: %s", msg);
+#else
   va_list args;
   va_start(args, msg);
   rb_message = rb_vsprintf(msg, args);
   va_end(args);
+#endif
 
   rb_funcall(doc, id_error, 1, rb_message);
 }
@@ -253,18 +265,27 @@ processing_instruction(void *ctx, const xmlChar *name, const xmlChar *content)
             );
 }
 
-static void
-deallocate(xmlSAXHandlerPtr handler)
+static size_t
+memsize(const void *data)
 {
-  NOKOGIRI_DEBUG_START(handler);
-  ruby_xfree(handler);
-  NOKOGIRI_DEBUG_END(handler);
+  return sizeof(xmlSAXHandler);
 }
+
+/* Used by Nokogiri::XML::SAX::Parser and Nokogiri::HTML::SAX::Parser */
+static const rb_data_type_t noko_sax_handler_type = {
+  .wrap_struct_name = "Nokogiri::SAXHandler",
+  .function = {
+    .dfree = RUBY_TYPED_DEFAULT_FREE,
+    .dsize = memsize
+  },
+  .flags = RUBY_TYPED_FREE_IMMEDIATELY | RUBY_TYPED_WB_PROTECTED
+};
 
 static VALUE
 allocate(VALUE klass)
 {
-  xmlSAXHandlerPtr handler = ruby_xcalloc((size_t)1, sizeof(xmlSAXHandler));
+  xmlSAXHandlerPtr handler;
+  VALUE self = TypedData_Make_Struct(klass, xmlSAXHandler, &noko_sax_handler_type, handler);
 
   handler->startDocument = start_document;
   handler->endDocument = end_document;
@@ -280,11 +301,19 @@ allocate(VALUE klass)
   handler->processingInstruction = processing_instruction;
   handler->initialized = XML_SAX2_MAGIC;
 
-  return Data_Wrap_Struct(klass, NULL, deallocate, handler);
+  return self;
+}
+
+xmlSAXHandlerPtr
+noko_sax_handler_unwrap(VALUE rb_sax_handler)
+{
+  xmlSAXHandlerPtr c_sax_handler;
+  TypedData_Get_Struct(rb_sax_handler, xmlSAXHandler, &noko_sax_handler_type, c_sax_handler);
+  return c_sax_handler;
 }
 
 void
-noko_init_xml_sax_parser()
+noko_init_xml_sax_parser(void)
 {
   cNokogiriXmlSaxParser = rb_define_class_under(mNokogiriXmlSax, "Parser", rb_cObject);
 

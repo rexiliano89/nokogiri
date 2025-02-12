@@ -51,7 +51,7 @@ gemspec = Dir.mktmpdir do |dir|
 
     YAML.safe_load(
       %x(gunzip -c metadata.gz),
-      permitted_classes: [Gem::Specification, Gem::Version, Gem::Dependency, Gem::Requirement, Time, Symbol]
+      permitted_classes: [Gem::Specification, Gem::Version, Gem::Dependency, Gem::Requirement, Time, Symbol],
     )
   end
 end
@@ -74,12 +74,12 @@ describe File.basename(gemfile) do
   let(:cross_rubies_path) { File.join(File.dirname(__FILE__), "..", ".cross_rubies") }
 
   let(:platform_supported_ruby_versions) do
-    File.read(cross_rubies_path).split("\n").map do |line|
+    File.read(cross_rubies_path).split("\n").filter_map do |line|
       ver, plat = line.split(":")
       next if plat != gemspec.platform.to_s
 
       ver.split(".").take(2).join(".") # ugh
-    end.compact.uniq.sort
+    end.uniq.sort
   end
 
   let(:all_supported_ruby_versions) do
@@ -125,10 +125,16 @@ describe File.basename(gemfile) do
 
     it "contains the port files" do
       actual_ports = gemfile_contents.grep(%r{^ports/})
-      assert_equal(1, actual_ports.grep(/libxml2-\d+\.\d+\.\d+\.tar\.[gx]z/).length,
-        "expected #{actual_ports} to include libxml2")
-      assert_equal(1, actual_ports.grep(/libxslt-\d+\.\d+\.\d+\.tar\.[gx]z/).length,
-        "expected #{actual_ports} to include libxslt")
+      assert_equal(
+        1,
+        actual_ports.grep(/libxml2-\d+\.\d+\.\d+\.tar\.[gx]z/).length,
+        "expected #{actual_ports} to include libxml2",
+      )
+      assert_equal(
+        1,
+        actual_ports.grep(/libxslt-\d+\.\d+\.\d+\.tar\.[gx]z/).length,
+        "expected #{actual_ports} to include libxslt",
+      )
       assert_equal(2, actual_ports.length)
     end
 
@@ -286,7 +292,7 @@ describe File.basename(gemfile) do
         assert_equal(
           1,
           actual_jars.count { |j| File.fnmatch?("lib/nokogiri/jruby/**/#{name}-*.jar", j) },
-          "expected to contain '#{name}-*.jar'"
+          "expected to contain '#{name}-*.jar'",
         )
       end
     end

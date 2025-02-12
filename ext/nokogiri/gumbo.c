@@ -281,12 +281,12 @@ add_errors(const GumboOutput *output, VALUE rdoc, VALUE input, VALUE url)
       rb_iv_set(syntax_error, "@code", INT2NUM(1));   // XML_ERR_INTERNAL_ERROR
       rb_iv_set(syntax_error, "@level", INT2NUM(2));  // XML_ERR_ERROR
       rb_iv_set(syntax_error, "@file", url);
-      rb_iv_set(syntax_error, "@line", INT2NUM(position.line));
+      rb_iv_set(syntax_error, "@line", SIZET2NUM(position.line));
       rb_iv_set(syntax_error, "@str1", str1);
       rb_iv_set(syntax_error, "@str2", Qnil);
       rb_iv_set(syntax_error, "@str3", Qnil);
       rb_iv_set(syntax_error, "@int1", INT2NUM(0));
-      rb_iv_set(syntax_error, "@column", INT2NUM(position.column));
+      rb_iv_set(syntax_error, "@column", SIZET2NUM(position.column));
       rb_ary_push(rerrors, syntax_error);
     }
     rb_iv_set(rdoc, "@errors", rerrors);
@@ -361,6 +361,7 @@ parse_continue(VALUE parse_args)
   build_tree(doc, (xmlNodePtr)doc, output->document);
   VALUE rdoc = noko_xml_document_wrap(args->klass, doc);
   rb_iv_set(rdoc, "@url", args->url_or_frag);
+  rb_iv_set(rdoc, "@quirks_mode", INT2NUM(output->document->v.document.doc_type_quirks_mode));
   args->doc = NULL; // The Ruby runtime now owns doc so don't delete it.
   add_errors(output, rdoc, args->input, args->url_or_frag);
   return rdoc;
@@ -501,9 +502,11 @@ error:
     }
 
     // Encoding.
-    if (RSTRING_LEN(tag_name) == 14
+    if (ctx_ns == GUMBO_NAMESPACE_MATHML
+        && RSTRING_LEN(tag_name) == 14
         && !st_strcasecmp(ctx_tag, "annotation-xml")) {
       VALUE enc = rb_funcall(ctx, rb_intern_const("[]"),
+                             1,
                              rb_utf8_str_new_static("encoding", 8));
       if (RTEST(enc)) {
         Check_Type(enc, T_STRING);
@@ -515,8 +518,11 @@ error:
   // Quirks mode.
   VALUE doc = rb_funcall(doc_fragment, rb_intern_const("document"), 0);
   VALUE dtd = rb_funcall(doc, internal_subset, 0);
-  if (NIL_P(dtd)) {
+  VALUE doc_quirks_mode = rb_iv_get(doc, "@quirks_mode");
+  if (NIL_P(ctx) || NIL_P(doc_quirks_mode)) {
     quirks_mode = GUMBO_DOCTYPE_NO_QUIRKS;
+  } else if (NIL_P(dtd)) {
+    quirks_mode = GUMBO_DOCTYPE_QUIRKS;
   } else {
     VALUE dtd_name = rb_funcall(dtd, name, 0);
     VALUE pubid = rb_funcall(dtd, rb_intern_const("external_id"), 0);
@@ -563,13 +569,14 @@ fragment_continue(VALUE parse_args)
   args->doc = NULL; // The Ruby runtime owns doc so make sure we don't delete it.
   xmlNodePtr xml_frag = extract_xml_node(doc_fragment);
   build_tree(xml_doc, xml_frag, output->root);
+  rb_iv_set(doc_fragment, "@quirks_mode", INT2NUM(output->document->v.document.doc_type_quirks_mode));
   add_errors(output, doc_fragment, args->input, rb_utf8_str_new_static("#fragment", 9));
   return Qnil;
 }
 
 // Initialize the Nokogumbo class and fetch constants we will use later.
 void
-noko_init_gumbo()
+noko_init_gumbo(void)
 {
   // Class constants.
   cNokogiriHtml5Document = rb_define_class_under(mNokogiriHtml5, "Document", cNokogiriHtml4Document);

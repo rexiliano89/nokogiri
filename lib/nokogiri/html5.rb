@@ -248,8 +248,11 @@ module Nokogiri
       #  * :basic_auth => [username, password]
       def get(uri, options = {})
         # TODO: deprecate
-        warn("Nokogiri::HTML5.get is deprecated and will be removed in a future version of Nokogiri.",
-          uplevel: 1, category: :deprecated)
+        warn(
+          "Nokogiri::HTML5.get is deprecated and will be removed in a future version of Nokogiri.",
+          uplevel: 1,
+          category: :deprecated,
+        )
         get_impl(uri, options)
       end
 
@@ -363,7 +366,7 @@ module Nokogiri
           # look for a charset in a meta tag in the first 1024 bytes
           unless encoding
             data = body[0..1023].gsub(/<!--.*?(-->|\Z)/m, "")
-            data.scan(/<meta.*?>/m).each do |meta|
+            data.scan(/<meta.*?>/im).each do |meta|
               encoding ||= meta[/charset=["']?([^>]*?)($|["'\s>])/im, 1]
             end
           end

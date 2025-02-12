@@ -537,7 +537,7 @@ static GumboInsertionMode get_current_template_insertion_mode (
   if (modes->length == 0) {
     return GUMBO_INSERTION_MODE_INITIAL;
   }
-  return (GumboInsertionMode) modes->data[(modes->length - 1)];
+  return (GumboInsertionMode)(intptr_t) modes->data[(modes->length - 1)];
 }
 
 // Returns true if the specified token is either a start or end tag
@@ -2678,6 +2678,7 @@ static void handle_in_head(GumboParser* parser, GumboToken* token) {
 static void handle_in_head_noscript(GumboParser* parser, GumboToken* token) {
   if (token->type == GUMBO_TOKEN_DOCTYPE) {
     parser_add_parse_error(parser, token);
+    ignore_token(parser);
     return;
   }
   if (tag_is(token, kStartTag, GUMBO_TAG_HTML)) {
@@ -3437,7 +3438,7 @@ static void handle_in_table(GumboParser* parser, GumboToken* token) {
      || token->type == GUMBO_TOKEN_WHITESPACE
      || token->type == GUMBO_TOKEN_NULL)
     && node_tag_in_set(get_current_node(parser), &(const TagSet) {
-      TAG(TABLE), TAG(TBODY), TAG(TFOOT), TAG(THEAD), TAG(TR)
+      TAG(TABLE), TAG(TBODY), TAG(TEMPLATE), TAG(TFOOT), TAG(THEAD), TAG(TR)
     })
   ) {
     // The "pending table character tokens" list described in the spec is

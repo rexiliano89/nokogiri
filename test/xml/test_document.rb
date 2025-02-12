@@ -81,7 +81,7 @@ module Nokogiri
         end
 
         def test_document_with_initial_space
-          doc = Nokogiri::XML(" <?xml version='1.0' encoding='utf-8' ?><first \>")
+          doc = Nokogiri::XML(" <?xml version='1.0' encoding='utf-8' ?><first >")
           assert_equal(2, doc.children.size)
         end
 
@@ -144,8 +144,10 @@ module Nokogiri
               </foo>
             </xml>
           eoxml
-          assert_equal({ "xmlns" => "hello", "xmlns:foo" => "world" },
-            doc.collect_namespaces)
+          assert_equal(
+            { "xmlns" => "hello", "xmlns:foo" => "world" },
+            doc.collect_namespaces,
+          )
         end
 
         def test_subclass_initialize_modify # testing a segv
@@ -498,10 +500,7 @@ module Nokogiri
         end
 
         def test_non_existent_function
-          # TODO: we should not be raising different types on the different engines
-          e_class = Nokogiri.uses_libxml? ? RuntimeError : Nokogiri::XML::XPath::SyntaxError
-
-          e = assert_raises(e_class) do
+          e = assert_raises(Nokogiri::XML::XPath::SyntaxError) do
             xml.xpath("//name[foo()]")
           end
           assert_match(/function.*not found|Could not find function/, e.to_s)
@@ -691,8 +690,10 @@ module Nokogiri
           doc = Nokogiri::XML.parse(Pathname.new(XML_ATOM_FILE))
 
           # an arbitrary assertion on the structure of the document
-          assert_equal(20, doc.xpath("/xmlns:feed/xmlns:entry/xmlns:author",
-            "xmlns" => "http://www.w3.org/2005/Atom").length)
+          assert_equal(20, doc.xpath(
+            "/xmlns:feed/xmlns:entry/xmlns:author",
+            "xmlns" => "http://www.w3.org/2005/Atom",
+          ).length)
           assert_equal(XML_ATOM_FILE, doc.url)
         end
 

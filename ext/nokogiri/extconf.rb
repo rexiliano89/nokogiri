@@ -200,7 +200,7 @@ def nix?
 end
 
 def truffle?
-  ::RUBY_ENGINE == "truffleruby"
+  RUBY_ENGINE == "truffleruby"
 end
 
 def concat_flags(*args)
@@ -209,6 +209,16 @@ end
 
 def local_have_library(lib, func = nil, headers = nil)
   have_library(lib, func, headers) || have_library("lib#{lib}", func, headers)
+end
+
+def zlib_source(version_string)
+  # As of 2022-12, I'm starting to see failed downloads often enough from zlib.net that I want to
+  # change the default to github.
+  if ENV["NOKOGIRI_USE_CANONICAL_ZLIB_SOURCE"]
+    "https://zlib.net/fossils/zlib-#{version_string}.tar.gz"
+  else
+    "https://github.com/madler/zlib/releases/download/v#{version_string}/zlib-#{version_string}.tar.gz"
+  end
 end
 
 def gnome_source
@@ -362,7 +372,7 @@ def try_link_iconv(using = nil)
       preserving_globals do
         yield if block_given?
 
-        try_link(<<~'SRC', opt)
+        try_link(<<~SRC, opt)
           #include <stdlib.h>
           #include <iconv.h>
           int main(void)
@@ -430,10 +440,12 @@ def process_recipe(name, version, static_p, cross_p, cacheable_p = true)
       "#{@target}/#{RUBY_PLATFORM}/#{@name}/#{@version}"
     end
 
-    recipe.target = File.join(PACKAGE_ROOT_DIR, "ports") if cacheable_p
-    # Prefer host_alias over host in order to use the correct compiler prefix for cross build, but
-    # use host if not set.
+    # We use 'host' to set compiler prefix for cross-compiling. Prefer host_alias over host. And
+    # prefer i686 (what external dev tools use) to i386 (what ruby's configure.ac emits).
     recipe.host = RbConfig::CONFIG["host_alias"].empty? ? RbConfig::CONFIG["host"] : RbConfig::CONFIG["host_alias"]
+    recipe.host = recipe.host.gsub(/i386/, "i686")
+
+    recipe.target = File.join(PACKAGE_ROOT_DIR, "ports") if cacheable_p
     recipe.configure_options << "--libdir=#{File.join(recipe.path, "lib")}"
 
     yield recipe
@@ -572,6 +584,34 @@ def do_clean
   exit!(0)
 end
 
+# In ruby 3.2, symbol resolution changed on Darwin, to introduce the `-bundle_loader` flag to
+# resolve symbols against the ruby binary.
+#
+# This makes it challenging to build a single extension that works with both a ruby with
+# `--enable-shared` and one with `--disable-shared. To work around that, we choose to add
+# `-flat_namespace` to the link line (later in this file).
+#
+# The `-flat_namespace` line introduces its own behavior change, which is that (similar to on
+# Linux), any symbols in the extension that are exported may now be resolved by shared libraries
+# loaded by the Ruby process. Specifically, that means that libxml2 and libxslt, which are
+# statically linked into the nokogiri bundle, will resolve (at runtime) to a system libxml2 loaded
+# by Ruby on Darwin. And it appears that often Ruby on Darwin does indeed load the system libxml2,
+# and that messes with our assumptions about whether we're running with a patched libxml2 or a
+# vanilla libxml2.
+#
+# We choose to use `-load_hidden` in this case to prevent exporting those symbols from libxml2 and
+# libxslt, which ensures that they will be resolved to the static libraries in the bundle. In other
+# words, when we use `load_hidden`, what happens in the extension stays in the extension.
+#
+# See https://github.com/rake-compiler/rake-compiler-dock/issues/87 for more info.
+#
+# Anyway, this method is the logical bit to tell us when to turn on these workarounds.
+def needs_darwin_linker_hack
+  config_cross_build? &&
+    darwin? &&
+    Gem::Requirement.new("~> 3.2").satisfied_by?(Gem::Version.new(RbConfig::CONFIG["ruby_version"].split("+").first))
+end
+
 #
 #  main
 #
@@ -579,7 +619,7 @@ do_help if arg_config("--help")
 do_clean if arg_config("--clean")
 
 if openbsd? && !config_system_libraries?
-  if %x(#{ENV["CC"] || "/usr/bin/cc"} -v 2>&1) !~ /clang/
+  unless %x(#{ENV["CC"] || "/usr/bin/cc"} -v 2>&1).include?("clang")
     (ENV["CC"] ||= find_executable("egcc")) ||
       abort("Please install gcc 4.9+ from ports using `pkg_add -v gcc`")
   end
@@ -627,8 +667,18 @@ append_cflags("-Winline")
 # good to have no matter what Ruby was compiled with
 append_cflags("-Wmissing-noreturn")
 
+# check integer loss of precision
+if darwin?
+  append_cflags("-Wshorten-64-to-32")
+else
+  append_cflags("-Wconversion -Wno-sign-conversion")
+end
+
 # handle clang variations, see #1101
-append_cflags("-Wno-error=unused-command-line-argument-hard-error-in-future") if darwin?
+if darwin?
+  append_cflags("-Wno-error=unused-command-line-argument-hard-error-in-future")
+  append_cflags("-Wno-unknown-warning-option")
+end
 
 # these tend to be noisy, but on occasion useful during development
 # append_cflags(["-Wcast-qual", "-Wwrite-strings"])
@@ -645,14 +695,34 @@ append_cppflags(' "-Idummypath"') if windows?
 
 if config_system_libraries?
   message "Building nokogiri using system libraries.\n"
-  ensure_package_configuration(opt: "zlib", pc: "zlib", lib: "z",
-    headers: "zlib.h", func: "gzdopen")
-  ensure_package_configuration(opt: "xml2", pc: "libxml-2.0", lib: "xml2",
-    headers: "libxml/parser.h", func: "xmlParseDoc")
-  ensure_package_configuration(opt: "xslt", pc: "libxslt", lib: "xslt",
-    headers: "libxslt/xslt.h", func: "xsltParseStylesheetDoc")
-  ensure_package_configuration(opt: "exslt", pc: "libexslt", lib: "exslt",
-    headers: "libexslt/exslt.h", func: "exsltFuncRegister")
+  ensure_package_configuration(
+    opt: "zlib",
+    pc: "zlib",
+    lib: "z",
+    headers: "zlib.h",
+    func: "gzdopen",
+  )
+  ensure_package_configuration(
+    opt: "xml2",
+    pc: "libxml-2.0",
+    lib: "xml2",
+    headers: "libxml/parser.h",
+    func: "xmlParseDoc",
+  )
+  ensure_package_configuration(
+    opt: "xslt",
+    pc: "libxslt",
+    lib: "xslt",
+    headers: "libxslt/xslt.h",
+    func: "xsltParseStylesheetDoc",
+  )
+  ensure_package_configuration(
+    opt: "exslt",
+    pc: "libexslt",
+    lib: "exslt",
+    headers: "libexslt/exslt.h",
+    func: "exsltFuncRegister",
+  )
 
   have_libxml_headers?(REQUIRED_LIBXML_VERSION) ||
     abort("ERROR: libxml2 version #{REQUIRED_LIBXML_VERSION} or later is required!")
@@ -668,6 +738,10 @@ else
   cross_build_p = config_cross_build?
   message "Cross build is #{cross_build_p ? "enabled" : "disabled"}.\n"
 
+  if needs_darwin_linker_hack
+    append_ldflags("-Wl,-flat_namespace")
+  end
+
   require "yaml"
   dependencies = YAML.load_file(File.join(PACKAGE_ROOT_DIR, "dependencies.yml"))
 
@@ -676,7 +750,7 @@ else
   if cross_build_p || windows?
     zlib_recipe = process_recipe("zlib", dependencies["zlib"]["version"], static_p, cross_build_p) do |recipe|
       recipe.files = [{
-        url: "https://zlib.net/fossils/#{recipe.name}-#{recipe.version}.tar.gz",
+        url: zlib_source(recipe.version),
         sha256: dependencies["zlib"]["sha256"],
       }]
       if windows?
@@ -714,17 +788,29 @@ else
       else
         class << recipe
           def configure
-            cflags = concat_flags(ENV["CFLAGS"], "-fPIC", "-g")
-            execute("configure",
-              ["env", "CHOST=#{host}", "CFLAGS=#{cflags}", "./configure", "--static", configure_prefix])
+            env = {}
+            env["CFLAGS"] = concat_flags(ENV["CFLAGS"], "-fPIC", "-g")
+            env["CHOST"] = host
+            execute("configure", ["./configure", "--static", configure_prefix], { env: env })
+            if darwin?
+              # needed as of zlib 1.2.13
+              Dir.chdir(work_path) do
+                makefile = File.read("Makefile").gsub(/^AR=.*$/, "AR=#{host}-libtool")
+                File.open("Makefile", "w") { |m| m.write(makefile) }
+              end
+            end
           end
         end
       end
     end
 
     unless nix?
-      libiconv_recipe = process_recipe("libiconv", dependencies["libiconv"]["version"], static_p,
-        cross_build_p) do |recipe|
+      libiconv_recipe = process_recipe(
+        "libiconv",
+        dependencies["libiconv"]["version"],
+        static_p,
+        cross_build_p,
+      ) do |recipe|
         recipe.files = [{
           url: "https://ftp.gnu.org/pub/gnu/libiconv/#{recipe.name}-#{recipe.version}.tar.gz",
           sha256: dependencies["libiconv"]["sha256"],
@@ -762,15 +848,25 @@ else
   if zlib_recipe
     append_cppflags("-I#{zlib_recipe.path}/include")
     $LIBPATH = ["#{zlib_recipe.path}/lib"] | $LIBPATH
-    ensure_package_configuration(opt: "zlib", pc: "zlib", lib: "z",
-      headers: "zlib.h", func: "gzdopen")
+    ensure_package_configuration(
+      opt: "zlib",
+      pc: "zlib",
+      lib: "z",
+      headers: "zlib.h",
+      func: "gzdopen",
+    )
   end
 
   if libiconv_recipe
     append_cppflags("-I#{libiconv_recipe.path}/include")
     $LIBPATH = ["#{libiconv_recipe.path}/lib"] | $LIBPATH
-    ensure_package_configuration(opt: "iconv", pc: "iconv", lib: "iconv",
-      headers: "iconv.h", func: "iconv_open")
+    ensure_package_configuration(
+      opt: "iconv",
+      pc: "iconv",
+      lib: "iconv",
+      headers: "iconv.h",
+      func: "iconv_open",
+    )
   end
 
   libxml2_recipe = process_recipe("libxml2", dependencies["libxml2"]["version"], static_p, cross_build_p) do |recipe|
@@ -892,7 +988,7 @@ else
       end
 
       patches_string = recipe.patch_files.map { |path| File.basename(path) }.join(" ")
-      append_cppflags(%[-DNOKOGIRI_#{recipe.name.upcase}_PATCHES="\\\"#{patches_string}\\\""])
+      append_cppflags(%[-DNOKOGIRI_#{recipe.name.upcase}_PATCHES="\\"#{patches_string}\\""])
 
       case libname
       when "xml2"
@@ -911,16 +1007,17 @@ else
   end.shelljoin
 
   if static_p
+    static_archive_ld_flag = needs_darwin_linker_hack ? ["-load_hidden"] : []
     $libs = $libs.shellsplit.map do |arg|
       case arg
       when "-lxml2"
-        File.join(libxml2_recipe.path, "lib", libflag_to_filename(arg))
+        static_archive_ld_flag + [File.join(libxml2_recipe.path, "lib", libflag_to_filename(arg))]
       when "-lxslt", "-lexslt"
-        File.join(libxslt_recipe.path, "lib", libflag_to_filename(arg))
+        static_archive_ld_flag + [File.join(libxslt_recipe.path, "lib", libflag_to_filename(arg))]
       else
         arg
       end
-    end.shelljoin
+    end.flatten.shelljoin
   end
 
   ensure_func("xmlParseDoc", "libxml/parser.h")
@@ -960,7 +1057,7 @@ libgumbo_recipe = process_recipe("libgumbo", "1.0.0-nokogiri", static_p, cross_b
 
       env = { "CC" => gcc_cmd, "CFLAGS" => cflags }
       if config_cross_build?
-        if /darwin/.match?(host)
+        if host.include?("darwin")
           env["AR"] = "#{host}-libtool"
           env["ARFLAGS"] = "-o"
         else
@@ -988,18 +1085,22 @@ have_func("rb_gc_location") # introduced in Ruby 2.7
 have_func("rb_category_warning") # introduced in Ruby 3.0
 
 other_library_versions_string = OTHER_LIBRARY_VERSIONS.map { |k, v| [k, v].join(":") }.join(",")
-append_cppflags(%[-DNOKOGIRI_OTHER_LIBRARY_VERSIONS="\\\"#{other_library_versions_string}\\\""])
+append_cppflags(%[-DNOKOGIRI_OTHER_LIBRARY_VERSIONS="\\"#{other_library_versions_string}\\""])
 
 unless config_system_libraries?
   if cross_build_p
     # When precompiling native gems, copy packaged libraries' headers to ext/nokogiri/include
     # These are packaged up by the cross-compiling callback in the ExtensionTask
-    copy_packaged_libraries_headers(to_path: File.join(PACKAGE_ROOT_DIR, "ext/nokogiri/include"),
-      from_recipes: [libxml2_recipe, libxslt_recipe])
+    copy_packaged_libraries_headers(
+      to_path: File.join(PACKAGE_ROOT_DIR, "ext/nokogiri/include"),
+      from_recipes: [libxml2_recipe, libxslt_recipe],
+    )
   else
     # When compiling during installation, install packaged libraries' header files into ext/nokogiri/include
-    copy_packaged_libraries_headers(to_path: "include",
-      from_recipes: [libxml2_recipe, libxslt_recipe])
+    copy_packaged_libraries_headers(
+      to_path: "include",
+      from_recipes: [libxml2_recipe, libxslt_recipe],
+    )
     $INSTALLFILES << ["include/**/*.h", "$(rubylibdir)"]
   end
 end
@@ -1017,3 +1118,5 @@ if config_clean?
     EOF
   end
 end
+
+# rubocop:enable Style/GlobalVars

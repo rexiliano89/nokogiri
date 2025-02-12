@@ -87,7 +87,8 @@ class TestHtml5API < Nokogiri::TestCase
     span = doc.at("/html/body/span")
     serialized = span.inner_html(encoding: "US-ASCII")
     assert_match(/^(?:&#(?:\d+|x\h+);)*$/, serialized)
-    assert_equal("ฉันไม่พูดภาษาไทย".each_char.map(&:ord),
+    assert_equal(
+      "ฉันไม่พูดภาษาไทย".each_char.map(&:ord),
       serialized.scan(/&#(\d+|x\h+);/).map do |s|
         s = s.first
         if s.start_with?("x")
@@ -95,7 +96,8 @@ class TestHtml5API < Nokogiri::TestCase
         else
           s.to_i
         end
-      end)
+      end,
+    )
 
     doc2 = Nokogiri::HTML5(doc.serialize(encoding: "Big5"))
     html2 = doc2.serialize(encoding: "UTF-8")
@@ -187,10 +189,53 @@ class TestHtml5API < Nokogiri::TestCase
     assert_empty(frag.children)
   end
 
+  def test_fragment_with_annotation_xml_context
+    # An annotation-xml element with an encoding of text/html or application/xhtml+xml
+    # is an HTML integration point so its children are not in the MathML namespace.
+    # Other encodings are not HTML integration points so children are in the MathML namespace.
+    doc = Nokogiri.HTML5("<!DOCTYPE html><math><annotation-xml encoding='MathML-Presentation' /></math>")
+    a_xml = doc.xpath("//math:annotation-xml")[0]
+    frag = a_xml.fragment("<mi>x</mi>")
+    mi = frag.children[0]
+    assert_equal("mi", mi.name)
+    refute_nil(mi.namespace)
+    assert_equal("math", mi.namespace.prefix)
+
+    doc = Nokogiri.HTML5("<!DOCTYPE html><math><annotation-xml encoding='text/html' /></math>")
+    a_xml = doc.xpath("//math:annotation-xml")[0]
+    frag = a_xml.fragment("<mi>x</mi>")
+    mi = frag.children[0]
+    assert_equal("mi", mi.name)
+    assert_nil(mi.namespace)
+  end
+
   def test_html_eh
     doc = Nokogiri.HTML5("<html><body><div></div></body></html>")
     assert_predicate(doc, :html?)
     refute_predicate(doc, :xml?)
+  end
+
+  def test_node_wrap
+    doc = Nokogiri.HTML5("<html><body><div></div></body></html>")
+    div = doc.at_css("div")
+    div.wrap("<section></section>")
+
+    assert_equal("section", div.parent.name)
+    assert_equal("body", div.parent.parent.name)
+  end
+
+  def test_node_wrap_uses_parent_node_as_parsing_context_node
+    doc = Nokogiri.HTML5("<html><body><select><option></option></select></body></html>")
+    el = doc.at_css("option")
+
+    # fails to parse because `div` is not valid in the context of a `select` element
+    exception = assert_raises(RuntimeError) { el.wrap("<div></div>") }
+    assert_match(/Failed to parse .* in the context of a 'select' element/, exception.message)
+
+    # parses because `optgroup` is valid in the context of a `select` element
+    el.wrap("<optgroup></optgroup>")
+    assert_equal("optgroup", el.parent.name)
+    assert_equal("select", el.parent.parent.name)
   end
 
   describe Nokogiri::HTML5::Document do
@@ -237,7 +282,7 @@ class TestHtml5API < Nokogiri::TestCase
           doc = klass.new("http://www.w3.org/TR/REC-html40/loose.dtd", "-//W3C//DTD HTML 4.0 Transitional//EN")
           assert_equal(
             ["http://www.w3.org/TR/REC-html40/loose.dtd", "-//W3C//DTD HTML 4.0 Transitional//EN"],
-            doc.initialized_with
+            doc.initialized_with,
           )
         end
       end
